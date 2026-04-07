@@ -24,8 +24,7 @@ jobs:
         run: |
           # 检查核心 spec 文件是否存在
           files=(
-            ".kiro/specs/xiaohongshu-marketing-agent/specs/architecture.md"
-            ".kiro/specs/xiaohongshu-marketing-agent/specs/requirements.md"
+            ".kiro/specs/architecture.md"
           )
           for f in "${files[@]}"; do
             if [ ! -f "$f" ]; then
