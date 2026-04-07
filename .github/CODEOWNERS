@@ -1,0 +1,10 @@
+# 默认所有文件需要 PGK-13 审核
+* @PGK-13
+
+# 各模块负责人（后续按团队分工填写）
+.kiro/specs/xiaohongshu-marketing-agent/specs/module-a-account/ @PGK-13
+.kiro/specs/xiaohongshu-marketing-agent/specs/module-b-knowledge/ @PGK-13
+.kiro/specs/xiaohongshu-marketing-agent/specs/module-c-content/ @PGK-13
+.kiro/specs/xiaohongshu-marketing-agent/specs/module-d-interaction/ @PGK-13
+.kiro/specs/xiaohongshu-marketing-agent/specs/module-e-risk/ @PGK-13
+.kiro/specs/xiaohongshu-marketing-agent/specs/module-f-analytics/ @PGK-13
