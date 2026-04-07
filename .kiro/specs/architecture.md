@@ -67,6 +67,7 @@ graph TB
     MC --> IMG
     PW --> XHS
     MA & MD --> XHS
+```
 
 ### 模块职责边界
 
@@ -438,103 +439,103 @@ graph TB
 
 ```
 xiaohongshu-marketing-agent/
-├── backend/                        # FastAPI 后端
+├── backend/                      # FastAPI 后端
 │   ├── app/
-│   │   ├── main.py                 # FastAPI 应用入口
-│   │   ├── config.py               # 配置管理（pydantic-settings）
-│   │   ├── dependencies.py         # 依赖注入（DB session、认证）
+│   │   ├── main.py               # FastAPI 应用入口
+│   │   ├── config.py             # 配置管理（pydantic-settings）
+│   │   ├── dependencies.py       # 依赖注入（DB session、认证）
 │   │   ├── api/
-│   │   │   ├── v1/
-│   │   │   │   ├── accounts.py
-│   │   │   │   ├── knowledge.py
-│   │   │   │   ├── content.py
-│   │   │   │   ├── interaction.py
-│   │   │   │   ├── risk.py
-│   │   │   │   └── analytics.py
-│   │   ├── services/               # 业务逻辑层
+│   │   │   └── v1/
+│   │   │       ├── accounts.py
+│   │   │       ├── knowledge.py
+│   │   │       ├── content.py
+│   │   │       ├── interaction.py
+│   │   │       ├── risk.py
+│   │   │       └── analytics.py
+│   │   ├── services/             # 业务逻辑层
 │   │   │   ├── account_service.py
 │   │   │   ├── knowledge_service.py
 │   │   │   ├── content_service.py
 │   │   │   ├── interaction_service.py
 │   │   │   ├── risk_service.py
 │   │   │   └── analytics_service.py
-│   │   ├── models/                 # SQLAlchemy ORM 模型
+│   │   ├── models/               # SQLAlchemy ORM 模型
 │   │   │   ├── account.py
 │   │   │   ├── knowledge.py
 │   │   │   ├── content.py
 │   │   │   ├── interaction.py
 │   │   │   ├── risk.py
 │   │   │   └── analytics.py
-│   │   ├── schemas/                # Pydantic 请求/响应 Schema
+│   │   ├── schemas/              # Pydantic 请求/响应 Schema
 │   │   ├── core/
-│   │   │   ├── security.py         # 加密工具（令牌加密/解密）
-│   │   │   ├── notifications.py    # 告警推送（Webhook/邮件）
-│   │   │   └── rate_limiter.py     # Redis 频率限制
+│   │   │   ├── security.py       # 加密工具（令牌加密/解密）
+│   │   │   ├── notifications.py  # 告警推送（Webhook/邮件）
+│   │   │   └── rate_limiter.py   # Redis 频率限制
 │   │   └── db/
-│   │       ├── session.py          # 数据库连接池
-│   │       └── migrations/         # Alembic 迁移脚本
+│   │       ├── session.py        # 数据库连接池
+│   │       └── migrations/       # Alembic 迁移脚本
 │   ├── tests/
 │   └── requirements.txt
 │
-├── frontend/                       # Next.js 前端
+├── frontend/                     # Next.js 前端
 │   ├── app/
-│   │   ├── dashboard/              # 数据看板
-│   │   ├── accounts/               # 账号管理
-│   │   ├── content/                # 内容管理（草稿/发布计划）
-│   │   ├── hitl/                   # HITL 审核工作台
-│   │   ├── conversations/          # 实时会话列表
-│   │   └── alerts/                 # 告警中心
+│   │   ├── dashboard/            # 数据看板
+│   │   ├── accounts/             # 账号管理
+│   │   ├── content/              # 内容管理（草稿/发布计划）
+│   │   ├── hitl/                 # HITL 审核工作台
+│   │   ├── conversations/        # 实时会话列表
+│   │   └── alerts/               # 告警中心
 │   ├── components/
 │   ├── lib/
-│   │   └── api-client.ts           # API 请求封装
+│   │   └── api-client.ts         # API 请求封装
 │   └── package.json
 │
-├── agent/                          # LangGraph Agent 核心
+├── agent/                        # LangGraph Agent 核心
 │   ├── graphs/
-│   │   ├── intent_router.py        # 意图路由 Agent 图
-│   │   ├── content_generator.py    # 内容生成 Agent 图
-│   │   └── customer_service.py     # 实时客服 Agent 图（D5）
+│   │   ├── intent_router.py      # 意图路由 Agent 图
+│   │   ├── content_generator.py  # 内容生成 Agent 图
+│   │   └── customer_service.py   # 实时客服 Agent 图（D5）
 │   ├── tools/
-│   │   ├── rag_retrieval.py        # RAG 检索工具
-│   │   ├── industry_crawler.py     # 行业爆款采集工具（Playwright）
-│   │   ├── trend_analyzer.py       # 趋势分析与选题建议工具
-│   │   ├── risk_scan.py            # 风控扫描工具
-│   │   ├── dm_sender.py            # 私信发送工具
-│   │   ├── comment_reply.py        # 评论回复工具
-│   │   └── ocr_tool.py             # OCR 识别工具
+│   │   ├── rag_retrieval.py      # RAG 检索工具
+│   │   ├── industry_crawler.py   # 行业爆款采集工具（Playwright）
+│   │   ├── trend_analyzer.py     # 趋势分析与选题建议工具
+│   │   ├── risk_scan.py          # 风控扫描工具
+│   │   ├── dm_sender.py          # 私信发送工具
+│   │   ├── comment_reply.py      # 评论回复工具
+│   │   └── ocr_tool.py           # OCR 识别工具
 │   ├── memory/
-│   │   ├── short_term.py           # Redis 短期记忆（会话上下文）
-│   │   └── long_term.py            # PostgreSQL 长期记忆（用户偏好）
+│   │   ├── short_term.py         # Redis 短期记忆（会话上下文）
+│   │   └── long_term.py          # PostgreSQL 长期记忆（用户偏好）
 │   ├── llm/
-│   │   ├── base.py                 # LLM 抽象接口
-│   │   ├── openai_llm.py           # GPT-4o 实现
-│   │   └── deepseek_llm.py         # DeepSeek 实现
+│   │   ├── base.py               # LLM 抽象接口
+│   │   ├── openai_llm.py         # GPT-4o 实现
+│   │   └── deepseek_llm.py       # DeepSeek 实现
 │   └── prompts/
 │       ├── intent_classification.py
 │       ├── content_generation.py
 │       └── customer_service.py
 │
-├── worker/                         # Celery 异步任务
-│   ├── celery_app.py               # Celery 应用配置
+├── worker/                       # Celery 异步任务
+│   ├── celery_app.py             # Celery 应用配置
 │   ├── tasks/
-│   │   ├── publish_task.py         # 定时发布任务
-│   │   ├── data_sync_task.py       # 数据回抓任务（每 24h）
+│   │   ├── publish_task.py       # 定时发布任务
+│   │   ├── data_sync_task.py     # 数据回抓任务（每 24h）
 │   │   ├── industry_crawl_task.py  # 行业爆款采集任务（每 24h）
 │   │   ├── trend_analysis_task.py  # 行业趋势分析任务
 │   │   ├── weight_update_task.py   # RAG 权重更新任务
 │   │   ├── account_probe_task.py   # 账号状态探测任务（每 10min）
 │   │   ├── profile_sync_task.py    # 账号画像同步任务（每 24h）
 │   │   └── alert_task.py           # 告警推送任务
-│   └── beat_schedule.py            # Celery Beat 定时配置
+│   └── beat_schedule.py          # Celery Beat 定时配置
 │
-└── infra/                          # 基础设施配置
-    ├── docker-compose.yml          # 本地开发环境
-    ├── docker-compose.prod.yml     # 生产环境
+└── infra/                        # 基础设施配置
+    ├── docker-compose.yml        # 本地开发环境
+    ├── docker-compose.prod.yml   # 生产环境
     ├── nginx/
     │   └── nginx.conf
     ├── postgres/
-    │   └── init.sql                # 初始化 SQL
-    └── .env.example                # 环境变量模板
+    │   └── init.sql              # 初始化 SQL
+    └── .env.example              # 环境变量模板
 ```
 
 ---
