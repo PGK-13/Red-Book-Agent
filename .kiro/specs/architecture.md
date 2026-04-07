@@ -37,6 +37,7 @@ graph TB
     subgraph 异步任务层
         CW[Celery Worker<br/>内容生成 / 定时发布 / 数据回抓]
         CB[Celery Beat<br/>定时调度]
+        RMQ[RabbitMQ<br/>任务消息队列]
     end
 
     subgraph 基础设施层
@@ -60,6 +61,8 @@ graph TB
     LC --> QD & RD
     MC & MD --> CW
     CB --> CW
+    CW --> RMQ
+    RMQ --> CW
     CW --> PG & QD & RD
     MA --> PW
     MD --> PW & OCR
@@ -75,7 +78,7 @@ graph TB
 |------|------|----------|
 | A 账号服务 | OAuth 授权、Cookie 管理、代理配置、账号画像同步、状态监控 | Playwright、小红书 API |
 | B 知识库服务 | 文档解析分块、向量索引、混合检索、爆款文案权重管理、对话记忆、行业爆款采集、趋势分析与选题建议 | Qdrant、PostgreSQL、Playwright |
-| C 内容生成服务 | 文案生成、封面模板渲染、发布调度、草稿管理 | LLM、DALL-E、Pillow、Celery |
+| C 内容生成服务 | 文案生成、封面模板渲染、发布调度、草稿管理 | LLM、DALL-E、Pillow、Celery、RabbitMQ |
 | D 互动路由服务 | 评论监听、OCR 识别、意图分类、私信触发、实时客服、人工接管 | LangGraph、PaddleOCR、Playwright |
 | E 风控服务 | 敏感词扫描、频率限制、内容去重、竞品过滤 | Redis（频率计数）、PostgreSQL |
 | F 数据看板服务 | 转化漏斗统计、HITL 审核工作台、告警中心、数据导出 | PostgreSQL、Redis |
@@ -83,7 +86,7 @@ graph TB
 ### 模块间通信方式
 
 - **同步 REST**：前端 → API 网关 → 各业务服务；业务服务间直接调用（如 D 调用 B 检索、D 调用 E 风控）
-- **异步消息队列（Celery + Redis）**：内容生成任务、定时发布任务、数据回抓任务、告警推送任务
+- **异步消息队列（Celery + RabbitMQ）**：内容生成任务、定时发布任务、数据回抓任务、告警推送任务
 - **事件驱动（Redis Pub/Sub）**：账号状态变更通知、实时客服消息推送至前端 WebSocket
 
 ---
@@ -98,7 +101,7 @@ graph TB
 | 向量数据库 | Qdrant | 支持混合搜索（向量 + 稀疏向量 BM25），原生支持 payload 过滤，Docker 部署简单 |
 | 关系型数据库 | PostgreSQL | 支持 JSONB 存储非结构化字段，pg_trgm 支持模糊匹配，成熟的事务和审计能力 |
 | 缓存 | Redis | 频率计数（INCR + TTL）、会话上下文缓存、Celery Broker、Pub/Sub 实时推送 |
-| 消息队列 | Celery + Redis | 与 FastAPI 生态兼容，支持定时任务（Beat）、任务重试和优先级队列 |
+| 消息队列 | Celery + RabbitMQ | RabbitMQ 作为 Celery Broker，支持消息持久化、死信队列、优先级队列，比 Redis Broker 更可靠；Celery 原生支持，迁移成本低 |
 | 浏览器自动化 | Playwright | 支持多浏览器上下文隔离（对应多账号），异步 API，设备指纹配置灵活 |
 | OCR | PaddleOCR | 中文识别精度高，支持置信度输出，可本地部署无需外部 API |
 | 图像生成 | DALL-E API + Pillow | DALL-E 生成 AI 配图；Pillow 负责封面模板文字合成（确定性渲染，无需 AI） |
@@ -611,7 +614,7 @@ sequenceDiagram
     participant XHS as 小红书平台
 
     M->>API: POST /api/v1/content/generate（产品信息 + 账号 ID）
-    API->>CW: 推送内容生成任务（异步）
+    API->>CW: 推送内容生成任务（经 RabbitMQ）
     API-->>M: 返回 task_id
 
     CW->>DB: 读取账号人设（System Prompt）
