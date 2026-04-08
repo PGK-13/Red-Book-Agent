@@ -1,0 +1,9 @@
+from sqlalchemy.ext.asyncio import AsyncSession
+
+
+# TODO: 实现互动路由业务逻辑
+# - 评论监听与 OCR 识别
+# - 意图分类（LangGraph）
+# - 私信触发（去重：24h 内同意图只触发 1 次）
+# - 实时客服 Agent（端到端 ≤5s）
+# - 人工接管（HITL）
