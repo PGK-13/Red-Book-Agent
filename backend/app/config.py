@@ -6,6 +6,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",
     )
 
     # 应用
@@ -30,11 +31,11 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-4o"
 
-    # 加密
-    encryption_key: str = ""
+    # 加密（开发环境默认值，生产必须替换）
+    encryption_key: str = "dev-key-replace-in-production-32b="
 
-    # JWT
-    jwt_secret_key: str = ""
+    # JWT（开发环境默认值，生产必须替换）
+    jwt_secret_key: str = "dev-jwt-secret-replace-in-production"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440
 
