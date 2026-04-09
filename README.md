@@ -7,7 +7,7 @@
 ### 前置依赖
 
 - Docker & Docker Compose
-- Python 3.11+
+- Python 3.12+
 - Node.js 20+
 
 ### 1. 启动本地基础设施
