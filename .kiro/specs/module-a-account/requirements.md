@@ -16,6 +16,8 @@
 4. WHEN 账号的 Cookie 距离过期时间不足 24 小时，THE 营销 Agent SHALL 向商家发送 Cookie 刷新提醒通知。
 5. IF Cookie 已过期且商家未完成刷新，THEN THE 营销 Agent SHALL 暂停该账号的所有自动化操作，并将账号状态标记为"授权失效"。
 6. THE 营销 Agent SHALL 支持商家为每个账号配置独立的语气人设（如：专业、活泼、种草风），人设配置作为 LLM System Prompt 的一部分注入内容生成流程。
+7. WHEN 商家选择浏览器自动化方式接入账号，THE 营销 Agent SHALL 提供扫码登录功能：系统通过 Playwright 打开小红书登录页并截取二维码图片返回给前端展示，商家使用小红书 App 扫码确认后，系统自动提取登录后的 Cookie 并加密存储，全程无需商家手动复制粘贴 Cookie。
+8. WHEN 扫码登录流程启动后，THE 营销 Agent SHALL 以不超过 3 秒的间隔轮询检测登录状态，整个扫码登录会话的有效期为 5 分钟，超时后自动关闭浏览器上下文并返回超时状态。
 
 ---
 
