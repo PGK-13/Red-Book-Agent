@@ -20,8 +20,8 @@
     - 包含所有索引和约束（merchant_id 索引、status 索引、unique 约束）
     - _Requirements: A1.1, A1.2_
 
-- [ ] 2. 实现 Pydantic 请求/响应 Schema
-  - [ ] 2.1 创建 `backend/app/schemas/account.py`，定义所有账号相关 Schema
+- [x] 2. 实现 Pydantic 请求/响应 Schema
+  - [x] 2.1 创建 `backend/app/schemas/account.py`，定义所有账号相关 Schema
     - AccountCreateRequest：xhs_user_id(str, max_length=64)、nickname(str, max_length=128)、access_type(Literal["oauth","rpa","browser"])
     - OAuthCallbackRequest：code(str)
     - CookieUpdateRequest：raw_cookie(str)、expires_at(datetime)
