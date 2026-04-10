@@ -35,8 +35,8 @@
     - QrLoginStatusResponse：status(Literal["waiting","success","expired"])
     - _Requirements: A1.1, A1.3, A1.6, A1.7, A1.8, A2.1, A2.3, A4.4_
 
-- [ ] 3. 实现 AccountService 核心业务逻辑
-  - [ ] 3.1 在 `backend/app/services/account_service.py` 中实现账号 CRUD 方法
+- [x] 3. 实现 AccountService 核心业务逻辑
+  - [x] 3.1 在 `backend/app/services/account_service.py` 中实现账号 CRUD 方法
     - 替换现有 TODO stub
     - `list_accounts(merchant_id, limit, cursor, db)` → 按 merchant_id 过滤，cursor 分页
     - `create_account(merchant_id, data, db)` → 创建账号，检查商家套餐账号数量上限
@@ -44,17 +44,17 @@
     - `delete_account(merchant_id, account_id, db)` → 级联删除（persona、proxy_config）
     - 所有查询必须携带 merchant_id 过滤
     - _Requirements: A1.1, A1.2_
-  - [ ] 3.2 实现 OAuth 授权回调和 Cookie 管理方法
+  - [x] 3.2 实现 OAuth 授权回调和 Cookie 管理方法
     - `handle_oauth_callback(merchant_id, account_id, code, db)` → 用 code 换取 access_token，调用 `core/security.encrypt()` 加密后存入 oauth_token_enc
     - `update_cookie(merchant_id, account_id, raw_cookie, expires_at, db)` → 调用 `encrypt()` 加密 raw_cookie 存入 cookie_enc，更新 cookie_expires_at，若账号状态为 auth_expired 则恢复为 active
     - 原始凭证仅在内存中短暂存在，不得写入日志
     - _Requirements: A1.3, A1.4, A1.5_
-  - [ ] 3.3 实现人设配置和代理配置方法
+  - [x] 3.3 实现人设配置和代理配置方法
     - `update_persona(merchant_id, account_id, data, db)` → 创建或更新 AccountPersona 记录
     - `update_proxy(merchant_id, account_id, data, db)` → 调用 `encrypt()` 加密 proxy_url，创建或更新 ProxyConfig 记录
     - 代理配置更新时需校验设备指纹唯一性（user_agent + screen_resolution + timezone 组合不得与同商家其他账号重复）
     - _Requirements: A1.6, A2.1, A2.3_
-  - [ ] 3.4 实现账号状态探测方法
+  - [x] 3.4 实现账号状态探测方法
     - `probe_account_status(account_id, db)` → 检测 Cookie 过期时间和平台返回状态码
       - Cookie 距过期 < 24h → 调用 `notifications.send_alert()` 发送预警
       - Cookie 已过期 → 状态设为 auth_expired，暂停所有操作
@@ -63,19 +63,19 @@
     - `probe_all_accounts(db)` → 查询所有 active 账号，逐个调用 probe_account_status，更新 last_probed_at
     - 记录包含时间戳和错误码的异常日志
     - _Requirements: A4.1, A4.2, A4.3, A1.4, A1.5_
-  - [ ] 3.5 实现账号画像同步方法
+  - [x] 3.5 实现账号画像同步方法
     - `sync_profile(merchant_id, account_id, db)` → 通过 Playwright 浏览器上下文抓取小红书个人主页
     - 提取：昵称、简介、标签、粉丝数
     - 更新 account_personas 表对应字段和 profile_synced_at
     - _Requirements: A3.1, A3.2_
-  - [ ] 3.6 实现 Playwright 浏览器上下文管理方法
+  - [x] 3.6 实现 Playwright 浏览器上下文管理方法
     - `get_browser_context(account_id, db)` → 根据 ProxyConfig 创建隔离的 Playwright BrowserContext
     - 配置 proxy（解密 proxy_url）、user_agent、viewport（解析 screen_resolution）、timezone_id
     - 注入解密后的 Cookie（解析 cookie_enc）
     - 未配置代理时记录警告日志（IP 混用风险）
     - 上下文按需创建，使用完毕后关闭
     - _Requirements: A2.1, A2.2, A2.3_
-  - [ ] 3.7 实现扫码登录方法
+  - [x] 3.7 实现扫码登录方法
     - `start_qr_login(merchant_id, account_id, db)` → 通过 Playwright 打开小红书登录页，截取二维码图片
       - 使用账号已配置的代理 IP 创建浏览器上下文
       - 截取二维码区域为 base64 图片
@@ -88,7 +88,7 @@
       - 超时（> 5min）→ 关闭浏览器上下文，返回 expired 状态
     - _Requirements: A1.7, A1.8_
 
-- [ ] 4. Checkpoint — 确保 Service 层逻辑完整
+- [x] 4. Checkpoint — 确保 Service 层逻辑完整
   - 确保所有 Service 方法类型注解完整，async/await 正确使用
   - 确保所有查询携带 merchant_id 过滤
   - 确保所有敏感字段通过 core/security.encrypt() 加密
