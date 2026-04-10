@@ -6,8 +6,8 @@
 
 ## Tasks
 
-- [ ] 1. 实现 SQLAlchemy ORM 模型（Account、AccountPersona、ProxyConfig）
-  - [ ] 1.1 在 `backend/app/models/account.py` 中实现 Account、AccountPersona、ProxyConfig 三个 ORM 模型
+- [x] 1. 实现 SQLAlchemy ORM 模型（Account、AccountPersona、ProxyConfig）
+  - [x] 1.1 在 `backend/app/models/account.py` 中实现 Account、AccountPersona、ProxyConfig 三个 ORM 模型
     - 替换现有 TODO stub
     - Account 表：id(UUID PK)、merchant_id(UUID, indexed)、xhs_user_id(VARCHAR 64)、nickname(VARCHAR 128)、access_type(Enum: oauth/rpa/browser)、oauth_token_enc(Text)、cookie_enc(Text)、cookie_expires_at(TIMESTAMPTZ)、status(Enum: active/suspended/auth_expired/banned, default=active)、last_probed_at(TIMESTAMPTZ)、created_at(TIMESTAMPTZ, server_default=now)
     - AccountPersona 表：id(UUID PK)、account_id(UUID FK → accounts.id, CASCADE, unique)、tone(VARCHAR 64)、system_prompt(Text)、bio(Text)、tags(ARRAY Text)、follower_count(Integer)、profile_synced_at(TIMESTAMPTZ)
@@ -15,7 +15,7 @@
     - 定义 relationship：Account ↔ AccountPersona (one-to-one)、Account ↔ ProxyConfig (one-to-one)
     - 添加 UniqueConstraint("merchant_id", "xhs_user_id")
     - _Requirements: A1.1, A1.2, A1.6, A2.1, A2.3_
-  - [ ] 1.2 创建 Alembic 迁移脚本生成 accounts、account_personas、proxy_configs 三张表
+  - [x] 1.2 创建 Alembic 迁移脚本生成 accounts、account_personas、proxy_configs 三张表
     - 在 `backend/app/db/migrations/` 下生成迁移文件
     - 包含所有索引和约束（merchant_id 索引、status 索引、unique 约束）
     - _Requirements: A1.1, A1.2_
