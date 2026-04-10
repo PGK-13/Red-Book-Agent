@@ -113,21 +113,21 @@
     - 路由层只做参数校验和响应封装，不写业务逻辑
     - _Requirements: A1.1, A1.2, A1.3, A1.4, A1.5, A1.6, A1.7, A1.8, A2.1, A2.3, A3.1, A4.4_
 
-- [ ] 6. 实现 Celery 异步任务
-  - [ ] 6.1 实现 `worker/tasks/account_probe_task.py` 账号状态探测任务
+- [x] 6. 实现 Celery 异步任务
+  - [x] 6.1 实现 `worker/tasks/account_probe_task.py` 账号状态探测任务
     - 替换现有 NotImplementedError stub
     - 创建数据库会话，调用 AccountService.probe_all_accounts()
     - 配置 max_retries=3、retry_backoff=True
     - 每 10 分钟由 Celery Beat 触发（beat_schedule.py 已配置）
     - _Requirements: A4.1, A4.2, A4.3_
-  - [ ] 6.2 实现 `worker/tasks/profile_sync_task.py` 账号画像同步任务
+  - [x] 6.2 实现 `worker/tasks/profile_sync_task.py` 账号画像同步任务
     - 替换现有 NotImplementedError stub
     - 查询所有 active 账号，逐个调用 AccountService.sync_profile()
     - 配置 max_retries=3、retry_backoff=True
     - 每 24 小时凌晨 3 点由 Celery Beat 触发（beat_schedule.py 已配置）
     - _Requirements: A3.1, A3.2_
 
-- [ ] 7. Checkpoint — 确保端到端流程可用
+- [x] 7. Checkpoint — 确保端到端流程可用
   - 确保 API 路由 → Service 层 → ORM 模型完整串联
   - 确保 Celery 任务 → Service 层调用正确
   - Ensure all tests pass, ask the user if questions arise.
