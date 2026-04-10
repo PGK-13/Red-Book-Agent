@@ -94,8 +94,8 @@
   - 确保所有敏感字段通过 core/security.encrypt() 加密
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 5. 实现 API 路由层
-  - [ ] 5.1 在 `backend/app/api/v1/accounts.py` 中实现所有账号管理路由
+- [x] 5. 实现 API 路由层
+  - [x] 5.1 在 `backend/app/api/v1/accounts.py` 中实现所有账号管理路由
     - 替换现有 TODO stub
     - GET `/accounts` → 调用 AccountService.list_accounts，返回 PaginatedResponse[AccountResponse]
     - POST `/accounts` → 调用 AccountService.create_account，返回 BaseResponse[AccountResponse]
