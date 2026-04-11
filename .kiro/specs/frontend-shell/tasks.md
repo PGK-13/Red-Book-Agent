@@ -6,8 +6,8 @@
 
 ## Tasks
 
-- [ ] 1. 替换全局色彩体系为米粉色调
-  - [ ] 1.1 更新 `frontend/app/globals.css` 中的 `@theme inline` token
+- [x] 1. 替换全局色彩体系为米粉色调
+  - [x] 1.1 更新 `frontend/app/globals.css` 中的 `@theme inline` token
     - 替换所有颜色变量为米粉色调（见 design.md 色彩 Token 表）
     - `--color-bg-primary`: `#FFF5F5`（极浅粉背景）
     - `--color-bg-surface`: `#FFFFFF`（白色卡片）
