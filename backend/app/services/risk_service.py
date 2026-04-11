@@ -24,7 +24,9 @@ from app.models.analytics import Alert, OperationLog
 from app.models.account import Account
 from app.models.risk import AccountRiskConfig, ReplyHistory, RiskKeyword
 from app.schemas.risk import (
+    AccountRiskQuotaResponse,
     AccountRiskScheduleRequest,
+    RiskEventResponse,
     RiskHitResponse,
     RiskKeywordCreateRequest,
     RiskKeywordUpdateRequest,
@@ -706,6 +708,99 @@ async def update_account_schedule(
     return config
 
 
+async def get_account_quota(
+    merchant_id: str,
+    account_id: str,
+    db: AsyncSession,
+) -> AccountRiskQuotaResponse:
+    """Return current quota usage and rest-window state for one account."""
+
+    await _ensure_account_belongs_to_merchant(
+        merchant_id=merchant_id,
+        account_id=account_id,
+        db=db,
+    )
+
+    stmt = select(AccountRiskConfig).where(AccountRiskConfig.account_id == account_id)
+    result = await db.execute(stmt)
+    config = result.scalar_one_or_none()
+
+    comment_limit = config.comment_reply_limit_per_hour if config is not None else 20
+    dm_limit = config.dm_send_limit_per_hour if config is not None else 50
+    note_limit = config.note_publish_limit_per_day if config is not None else 3
+
+    redis = get_redis()
+    now = datetime.now(timezone.utc)
+    comment_used = await _read_quota_usage(
+        redis=redis,
+        account_id=account_id,
+        action="comment_reply",
+        bucket=now.strftime("%Y%m%d%H"),
+    )
+    dm_used = await _read_quota_usage(
+        redis=redis,
+        account_id=account_id,
+        action="dm_send",
+        bucket=now.strftime("%Y%m%d%H"),
+    )
+    note_used = await _read_quota_usage(
+        redis=redis,
+        account_id=account_id,
+        action="note_publish",
+        bucket=now.strftime("%Y%m%d"),
+    )
+
+    return AccountRiskQuotaResponse(
+        account_id=account_id,
+        comment_reply_used=comment_used,
+        comment_reply_limit=comment_limit,
+        dm_send_used=dm_used,
+        dm_send_limit=dm_limit,
+        note_publish_used=note_used,
+        note_publish_limit=note_limit,
+        in_rest_window=await is_in_rest_window(account_id=account_id, now=now, db=db),
+    )
+
+
+async def list_account_events(
+    merchant_id: str,
+    account_id: str,
+    db: AsyncSession,
+    limit: int = 50,
+) -> list[RiskEventResponse]:
+    """Return recent risk-related operation log events for one account."""
+
+    await _ensure_account_belongs_to_merchant(
+        merchant_id=merchant_id,
+        account_id=account_id,
+        db=db,
+    )
+
+    stmt = (
+        select(OperationLog)
+        .where(OperationLog.account_id == account_id)
+        .order_by(OperationLog.created_at.desc())
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    events = list(result.scalars().all())
+
+    responses: list[RiskEventResponse] = []
+    for event in events:
+        detail = event.detail or {}
+        responses.append(
+            RiskEventResponse(
+                id=event.id,
+                operation_type=event.operation_type,
+                status=event.status,
+                risk_decision=detail.get("risk_decision", "passed"),
+                violations=list(detail.get("violations", [])),
+                created_at=event.created_at,
+            )
+        )
+    return responses
+
+
 async def is_in_rest_window(
     account_id: str,
     now: datetime,
@@ -1101,6 +1196,13 @@ async def _get_quota_rule(
 
 def _build_quota_key(account_id: str, action: str, bucket: str) -> str:
     return f"risk:quota:{account_id}:{action}:{bucket}"
+
+
+async def _read_quota_usage(redis, account_id: str, action: str, bucket: str) -> int:
+    value = await redis.get(_build_quota_key(account_id=account_id, action=action, bucket=bucket))
+    if value is None:
+        return 0
+    return int(value)
 
 
 async def _get_rest_windows(account_id: str, db: AsyncSession) -> list[str]:
