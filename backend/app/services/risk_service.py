@@ -47,7 +47,7 @@ async def log_risk_event(
     detail: dict | None = None,
     error_code: str | None = None,
 ) -> OperationLog:
-    """Persist a risk-related operation log entry."""
+    """Persist a risk control operation log entry."""
 
     payload = {
         "risk_decision": risk_decision,
