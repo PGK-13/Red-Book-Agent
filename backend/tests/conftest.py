@@ -34,6 +34,12 @@ def _get_test_database_url() -> str:
     )
 
 
+def _requires_test_db(request: pytest.FixtureRequest) -> bool:
+    return request.node.get_closest_marker("requires_db") is not None or bool(
+        {"db", "client"} & set(request.fixturenames)
+    )
+
+
 def _make_engine():
     """每次调用创建新 engine（NullPool 不缓存连接）。"""
     return create_async_engine(
@@ -49,8 +55,12 @@ def _make_engine():
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def _setup_db():
+async def _setup_db(request: pytest.FixtureRequest):
     """每个测试前确保表存在并清空数据。"""
+    if not _requires_test_db(request):
+        yield
+        return
+
     engine = _make_engine()
     try:
         async with engine.begin() as conn:
@@ -66,11 +76,11 @@ async def _setup_db():
             await conn.execute(text("DELETE FROM accounts"))
             await conn.commit()
     except Exception as exc:
-        pytest.exit(
-            "Test database is unavailable. Set TEST_DATABASE_URL or start the "
-            "dedicated pytest PostgreSQL on 127.0.0.1:55432. "
-            f"Resolved URL: {_get_test_database_url()}. Original error: {exc}",
-            returncode=1,
+        pytest.skip(
+            "Test database is unavailable; skipping DB-dependent test. Set "
+            "TEST_DATABASE_URL or start the dedicated pytest PostgreSQL on "
+            f"127.0.0.1:55432. Resolved URL: {_get_test_database_url()}. "
+            f"Original error: {exc}"
         )
     finally:
         await engine.dispose()

@@ -658,6 +658,91 @@ class TestOutboundRiskScan:
 
         assert exc_info.value.status_code == 400
 
+    @pytest.mark.asyncio
+    async def test_scan_output_checks_account_ownership(
+        self,
+        db: AsyncSession,
+    ) -> None:
+        merchant_id = str(uuid4())
+        other_merchant_id = str(uuid4())
+        account = Account(
+            id=str(uuid4()),
+            merchant_id=merchant_id,
+            xhs_user_id=f"xhs_{uuid4().hex[:8]}",
+            nickname="owned-outbound",
+            access_type="browser",
+            status="active",
+        )
+        db.add(account)
+        await db.flush()
+
+        with pytest.raises(HTTPException) as exc_info:
+            await risk_service.scan_output(
+                merchant_id=other_merchant_id,
+                account_id=account.id,
+                scene="comment_reply",
+                content="hello there",
+                db=db,
+            )
+
+        assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_scan_output_runs_task4_stage_order(
+        self,
+        db: AsyncSession,
+    ) -> None:
+        merchant_id = str(uuid4())
+        account = Account(
+            id=str(uuid4()),
+            merchant_id=merchant_id,
+            xhs_user_id=f"xhs_{uuid4().hex[:8]}",
+            nickname="ordered-output",
+            access_type="browser",
+            status="active",
+        )
+        db.add(account)
+        await db.flush()
+
+        stage_calls: list[str] = []
+        with patch(
+            "app.services.risk_service._check_rest_window_for_output",
+            new=AsyncMock(side_effect=lambda *args, **kwargs: stage_calls.append("rest_window") or None),
+        ), patch(
+            "app.services.risk_service._check_quota_for_output",
+            new=AsyncMock(side_effect=lambda *args, **kwargs: stage_calls.append("quota") or None),
+        ), patch(
+            "app.services.risk_service.scan_sensitive_keywords",
+            new=AsyncMock(side_effect=lambda *args, **kwargs: stage_calls.append("sensitive_keywords") or []),
+        ), patch(
+            "app.services.risk_service._check_competitor_for_output",
+            new=AsyncMock(side_effect=lambda *args, **kwargs: stage_calls.append("competitor_keywords") or None),
+        ), patch(
+            "app.services.risk_service._check_similarity_for_output",
+            new=AsyncMock(
+                side_effect=lambda *args, **kwargs: (
+                    stage_calls.append("reply_similarity")
+                    or risk_service.RiskScanResponse(
+                        passed=False,
+                        decision="rewrite_required",
+                        hits=[],
+                        retryable=True,
+                    )
+                )
+            ),
+        ):
+            result = await risk_service.scan_output(
+                merchant_id=merchant_id,
+                account_id=account.id,
+                scene="comment_reply",
+                content="clean content",
+                db=db,
+            )
+
+        assert stage_calls == list(risk_service.OUTBOUND_SCAN_ORDER)
+        assert result.decision == "rewrite_required"
+        assert result.hits == []
+
 
 class TestQuotaReservation:
     @pytest.mark.asyncio
@@ -847,6 +932,34 @@ class TestRestWindowSchedule:
         assert config.account_id == account.id
         assert config.rest_windows == ["00:00-08:00", "13:00-14:00"]
         redis.setex.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_update_account_schedule_checks_account_ownership(
+        self,
+        db: AsyncSession,
+    ) -> None:
+        merchant_id = str(uuid4())
+        other_merchant_id = str(uuid4())
+        account = Account(
+            id=str(uuid4()),
+            merchant_id=merchant_id,
+            xhs_user_id=f"xhs_{uuid4().hex[:8]}",
+            nickname="rest-schedule-owned",
+            access_type="browser",
+            status="active",
+        )
+        db.add(account)
+        await db.flush()
+
+        with pytest.raises(HTTPException) as exc_info:
+            await risk_service.update_account_schedule(
+                merchant_id=other_merchant_id,
+                account_id=account.id,
+                data=AccountRiskScheduleRequest(rest_windows=["00:00-08:00"]),
+                db=db,
+            )
+
+        assert exc_info.value.status_code == 404
 
     @pytest.mark.asyncio
     async def test_is_in_rest_window_uses_cached_windows(

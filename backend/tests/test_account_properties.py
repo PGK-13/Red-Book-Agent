@@ -103,6 +103,8 @@ class TestOAuthTokenEncryption:
 
 
 class TestCookieExpiryWarning:
+    pytestmark = pytest.mark.requires_db
+
     """验证 Cookie 距过期 < 24h 时触发通知，≥ 24h 时不触发。"""
 
     @pytest.mark.asyncio
@@ -184,6 +186,8 @@ class TestCookieExpiryWarning:
 
 
 class TestCookieExpiredStatusTransition:
+    pytestmark = pytest.mark.requires_db
+
     """验证 Cookie 已过期时账号状态变为 auth_expired。"""
 
     @pytest.mark.asyncio
@@ -260,6 +264,8 @@ class TestProxyIPBindingConsistency:
 
 
 class TestDeviceFingerprintUniqueness:
+    pytestmark = pytest.mark.requires_db
+
     """验证同商家下不同账号的设备指纹组合不重复。"""
 
     @pytest.mark.asyncio
