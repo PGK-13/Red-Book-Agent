@@ -42,7 +42,7 @@
     - 登录成功时提取用户信息，调用 `_create_jwt_token()` 签发 JWT
     - 返回 `{"status": str, "token": str | None, "user": dict | None}`
     - _需求: 2.1, 2.3, 2.4, 2.5, 3.1_
-  - [ ]* 2.4 编写 `_create_jwt_token()` 属性测试
+  - [x] 2.4 编写 `_create_jwt_token()` 属性测试
     - **属性 4: JWT 签发往返一致性**
     - **验证: 需求 3.1 — 签发的 JWT 解码后 sub、nickname、avatar 与输入一致**
     - **属性 5: JWT 过期时间正确性**
