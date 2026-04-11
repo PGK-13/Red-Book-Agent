@@ -144,7 +144,7 @@ class RiskService:
         merchant_id: str,
         account_id: UUID,
         scene: Literal["note_publish", "comment_reply", "dm_send"],
-        content: str,
+       db: AsyncSession,
     ) -> RiskScanResult
     async def scan_input(
         merchant_id: str,
