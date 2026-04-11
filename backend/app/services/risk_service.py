@@ -35,6 +35,13 @@ logger = logging.getLogger(__name__)
 
 REPLY_HISTORY_CACHE_SIZE = 100
 REPLY_HISTORY_CACHE_TTL_SECONDS = 86400
+OUTBOUND_SCAN_ORDER = (
+    "rest_window",
+    "quota",
+    "sensitive_keywords",
+    "competitor_keywords",
+    "reply_similarity",
+)
 
 
 async def log_risk_event(
@@ -526,95 +533,23 @@ async def scan_output(
         db=db,
     )
 
-    rest_decision = await _check_rest_window_for_output(account_id=account_id, scene=scene, db=db)
-    if rest_decision is not None:
-        await log_risk_event(
-            account_id=account_id,
-            operation_type=scene,
-            status="failed",
-            risk_decision=rest_decision.decision,
-            violations=[],
-            detail={"reason": "rest_window"},
-            error_code="rest_window_blocked",
-            db=db,
-        )
-        return rest_decision
-
-    quota_decision = await _check_quota_for_output(account_id=account_id, scene=scene, db=db)
-    if quota_decision is not None:
-        await log_risk_event(
-            account_id=account_id,
-            operation_type=scene,
-            status="failed",
-            risk_decision=quota_decision.decision,
-            violations=[],
-            detail={"reason": "quota_exceeded"},
-            error_code="quota_exceeded",
-            db=db,
-        )
-        return quota_decision
-
-    hits = await scan_sensitive_keywords(content=content, merchant_id=merchant_id, db=db)
-    keyword_decision = _build_keyword_decision(hits=hits)
-    if keyword_decision is not None:
-        await log_risk_event(
-            account_id=account_id,
-            operation_type=scene,
-            status="failed" if keyword_decision.decision == "blocked" else "skipped",
-            risk_decision=keyword_decision.decision,
-            violations=_extract_hit_keywords(hits),
-            detail={"reason": "sensitive_keywords"},
-            error_code="sensitive_keyword_hit",
-            db=db,
-        )
-        return keyword_decision
-
-    competitor_decision = await _check_competitor_for_output(
+    stage_result = await _run_scan_output_stages(
         merchant_id=merchant_id,
         account_id=account_id,
         scene=scene,
         content=content,
         db=db,
     )
-    if competitor_decision is not None:
-        await log_risk_event(
+    if stage_result is not None:
+        decision, log_context = stage_result
+        await _log_scan_output_decision(
             account_id=account_id,
-            operation_type=scene,
-            status="skipped",
-            risk_decision=competitor_decision.decision,
-            violations=_extract_hit_keywords(competitor_decision.hits),
-            detail={"reason": "competitor_keywords"},
-            error_code="competitor_keyword_hit",
+            scene=scene,
+            decision=decision,
             db=db,
+            **log_context,
         )
-        return competitor_decision
-
-    similarity_decision = await _check_similarity_for_output(
-        account_id=account_id,
-        scene=scene,
-        content=content,
-        db=db,
-    )
-    if similarity_decision is not None:
-        await log_risk_event(
-            account_id=account_id,
-            operation_type=scene,
-            status="skipped",
-            risk_decision=similarity_decision.decision,
-            violations=[],
-            detail={
-                "reason": "reply_similarity",
-                "similarity_score": similarity_decision.similarity_score,
-                "matched_history_id": (
-                    str(similarity_decision.matched_history_id)
-                    if similarity_decision.matched_history_id is not None
-                    else None
-                ),
-            },
-            error_code="reply_similarity_hit",
-            db=db,
-        )
-        return similarity_decision
+        return _to_public_scan_response(decision)
 
     await log_risk_event(
         account_id=account_id,
@@ -625,12 +560,118 @@ async def scan_output(
         detail={"reason": "passed"},
         db=db,
     )
-    return RiskScanResponse(
-        passed=True,
-        decision="passed",
-        hits=[],
-        retryable=False,
+    return _to_public_scan_response(
+        RiskScanResponse(
+            passed=True,
+            decision="passed",
+            hits=[],
+            retryable=False,
+        )
     )
+
+
+async def _run_scan_output_stages(
+    merchant_id: str,
+    account_id: str,
+    scene: str,
+    content: str,
+    db: AsyncSession,
+) -> tuple[RiskScanResponse, dict[str, str | list[str] | dict | None]] | None:
+    rest_decision = await _check_rest_window_for_output(account_id=account_id, scene=scene, db=db)
+    if rest_decision is not None:
+        return rest_decision, {
+            "status": "failed",
+            "violations": [],
+            "detail": {"reason": "rest_window", "stage_order": list(OUTBOUND_SCAN_ORDER)},
+            "error_code": "rest_window_blocked",
+        }
+
+    quota_decision = await _check_quota_for_output(account_id=account_id, scene=scene, db=db)
+    if quota_decision is not None:
+        return quota_decision, {
+            "status": "failed",
+            "violations": [],
+            "detail": {"reason": "quota_exceeded", "stage_order": list(OUTBOUND_SCAN_ORDER)},
+            "error_code": "quota_exceeded",
+        }
+
+    hits = await scan_sensitive_keywords(content=content, merchant_id=merchant_id, db=db)
+    keyword_decision = _build_keyword_decision(hits=hits)
+    if keyword_decision is not None:
+        return keyword_decision, {
+            "status": "failed" if keyword_decision.decision == "blocked" else "skipped",
+            "violations": _extract_hit_keywords(hits),
+            "detail": {"reason": "sensitive_keywords", "stage_order": list(OUTBOUND_SCAN_ORDER)},
+            "error_code": "sensitive_keyword_hit",
+        }
+
+    competitor_decision = await _check_competitor_for_output(
+        merchant_id=merchant_id,
+        account_id=account_id,
+        scene=scene,
+        content=content,
+        db=db,
+    )
+    if competitor_decision is not None:
+        return competitor_decision, {
+            "status": "skipped",
+            "violations": _extract_hit_keywords(competitor_decision.hits),
+            "detail": {"reason": "competitor_keywords", "stage_order": list(OUTBOUND_SCAN_ORDER)},
+            "error_code": "competitor_keyword_hit",
+        }
+
+    similarity_decision = await _check_similarity_for_output(
+        account_id=account_id,
+        scene=scene,
+        content=content,
+        db=db,
+    )
+    if similarity_decision is not None:
+        return similarity_decision, {
+            "status": "skipped",
+            "violations": [],
+            "detail": {
+                "reason": "reply_similarity",
+                "stage_order": list(OUTBOUND_SCAN_ORDER),
+                "similarity_score": similarity_decision.similarity_score,
+                "matched_history_id": (
+                    str(similarity_decision.matched_history_id)
+                    if similarity_decision.matched_history_id is not None
+                    else None
+                ),
+            },
+            "error_code": "reply_similarity_hit",
+        }
+
+    return None
+
+
+async def _log_scan_output_decision(
+    account_id: str,
+    scene: str,
+    decision: RiskScanResponse,
+    status: str,
+    violations: list[str],
+    detail: dict,
+    error_code: str,
+    db: AsyncSession,
+) -> None:
+    await log_risk_event(
+        account_id=account_id,
+        operation_type=scene,
+        status=status,
+        risk_decision=decision.decision,
+        violations=violations,
+        detail=detail,
+        error_code=error_code,
+        db=db,
+    )
+
+
+def _to_public_scan_response(decision: RiskScanResponse) -> RiskScanResponse:
+    """Return the stable API-facing decision object without helper-specific fields."""
+
+    return RiskScanResponse.model_validate(decision.model_dump())
 
 
 async def update_account_schedule(
