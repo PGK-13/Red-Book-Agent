@@ -135,8 +135,8 @@
     - 更新 `frontend/app/page.tsx` 保持重定向到 `/dashboard`
     - _Requirements: F2.1_
 
-- [ ] 6. 更新前端设计规范 Steering 文件
-  - [ ] 6.1 更新 `.kiro/steering/frontend-design.md`
+- [x] 6. 更新前端设计规范 Steering 文件
+  - [x] 6.1 更新 `.kiro/steering/frontend-design.md`
     - 将设计风格从"深色专业风格"改为"浅色米粉色调"
     - 更新所有颜色 Token 表为新的米粉色值
     - 更新按钮、卡片、输入框等组件规范的配色描述
