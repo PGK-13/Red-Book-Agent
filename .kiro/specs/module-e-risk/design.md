@@ -132,19 +132,19 @@ class RiskService:
     """风控与合规编排服务。"""
 
     # ── 配置管理 ──
-    async def list_keywords(merchant_id: str, category: str | None, is_active: bool | None) -> list[RiskKeyword]
-    async def create_keyword(merchant_id: str, data: RiskKeywordCreateRequest) -> RiskKeyword
-    async def update_keyword(merchant_id: str, keyword_id: UUID, data: RiskKeywordUpdateRequest) -> RiskKeyword
-    async def delete_keyword(merchant_id: str, keyword_id: UUID) -> None
-    async def update_account_schedule(merchant_id: str, account_id: UUID, data: AccountRiskScheduleRequest) -> None
-    async def get_account_quota(merchant_id: str, account_id: UUID) -> AccountRiskQuotaResponse
+ async def list_keywords(merchant_id: str, category: str | None, is_active: bool | None, db: AsyncSession) -> list[RiskKeyword]
+    async def create_keyword(merchant_id: str, data: RiskKeywordCreateRequest, db: AsyncSession) -> RiskKeyword
+    async def update_keyword(merchant_id: str, keyword_id: UUID, data: RiskKeywordUpdateRequest, db: AsyncSession) -> RiskKeyword
+    async def delete_keyword(merchant_id: str, keyword_id: UUID, db: AsyncSession) -> None
+    async def update_account_schedule(merchant_id: str, account_id: UUID, data: AccountRiskScheduleRequest, db: AsyncSession) -> None
+    async def get_account_quota(merchant_id: str, account_id: UUID, db: AsyncSession) -> AccountRiskQuotaResponse
 
     # ── 核心扫描 ──
     async def scan_output(
         merchant_id: str,
         account_id: UUID,
         scene: Literal["note_publish", "comment_reply", "dm_send"],
-        content: str,
+       db: AsyncSession,
     ) -> RiskScanResult
     async def scan_input(
         merchant_id: str,
@@ -162,7 +162,14 @@ class RiskService:
     # ── 告警与日志 ──
     async def log_risk_event(account_id: UUID, event: RiskEventLog) -> None
     async def emit_alert_if_needed(account_id: UUID, trigger: AlertTrigger) -> None
-```
+```async def check_and_reserve_quota(account_id: UUID, action: str, db: AsyncSession) -> RateLimitDecision
+    async def apply_humanized_delay(account_id: UUID, action: str) -> float
+    async def detect_similarity(account_id: UUID, candidate: str, db: AsyncSession) -> SimilarityDecision
+    async def persist_reply_history(account_id: UUID, content: str, db: AsyncSession) -> None
+
+    # ── 告警与日志 ──
+    async def log_risk_event(account_id: UUID, event: RiskEventLog, db: AsyncSession) -> None
+    async def emit_alert_if_needed(account_id: UUID, trigger: AlertTrigger, db: AsyncSession) -> None
 
 关键设计决策：
 - `scan_output()` 为模块 C、D 的统一前置门禁接口，内部串联敏感词、竞品避嫌、相似度、频率和休息时段检查
@@ -195,7 +202,7 @@ class RiskService:
 - `note_publish`：每天最多 3 次
 
 实现策略：
-- Redis 维护滑动窗口计数键，建议键格式：
+- Redis 维护固定窗口计数键（注意：非滑动窗口，MVP 阶段使用固定窗口简化实现，后续可升级为 sorted set 滑动窗口），建议键格式：
   - `risk:quota:{account_id}:comment_reply:{yyyyMMddHH}`
   - `risk:quota:{account_id}:dm_send:{yyyyMMddHH}`
   - `risk:quota:{account_id}:note_publish:{yyyyMMdd}`
@@ -207,7 +214,9 @@ class RiskService:
 内容去重由两部分组成：
 - 变体注入：在生成阶段通过同义词替换、语序微调、语气词增减拉低相似度
 - 历史比对：发送前将候选回复与账号最近 100 条历史回复比较，阈值为 `0.85`
-
+内容去重由两部分组成：
+- 历史比对：发送前将候选回复与账号最近 100 条历史回复比较，阈值为 `0.85`
+- 变体注入属于模块 C（内容生成引擎）的职责，E 模块只负责检测相似度并返回改写建议
 竞品避嫌策略：
 - 关键词列表支持商家后台维护
 - 同时支持全词匹配和编辑距离 ≤ 1 的模糊匹配
@@ -431,6 +440,54 @@ class ReplyHistory(Base):
     created_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ, server_default=func.now())
 ```
 
+
+class OperationLog(Base):
+    """风控操作日志，记录每次扫描的决策结果。"""
+    __tablename__ = "operation_logs"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    merchant_id: Mapped[UUID] = mapped_column(index=True, nullable=False)
+    account_id: Mapped[UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    operation_type: Mapped[str] = mapped_column(
+        Enum("note_publish", "comment_reply", "dm_send", "comment_inbound", "dm_inbound", name="operation_type_enum"),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(
+        Enum("success", "blocked", "rewrite_required", "manual_review", name="operation_status_enum"),
+        nullable=False,
+    )
+    risk_decision: Mapped[str] = mapped_column(String(32), nullable=False)
+    violations: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
+    content_preview: Mapped[str | None] = mapped_column(Text, nullable=True)  # 脱敏后的内容摘要
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ, server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_operation_logs_account_type_created", "account_id", "operation_type", created_at.desc()),
+    )
+
+
+class Alert(Base):
+    """风控告警记录。"""
+    __tablename__ = "alerts"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    merchant_id: Mapped[UUID] = mapped_column(index=True, nullable=False)
+    account_id: Mapped[UUID | None] = mapped_column(ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True)
+    module: Mapped[str] = mapped_column(String(32), nullable=False, default="risk")
+    alert_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    severity: Mapped[str] = mapped_column(
+        Enum("info", "warning", "critical", name="alert_severity_enum"),
+        default="warning",
+        nullable=False,
+    )
+    is_resolved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ, server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_alerts_merchant_module_created", "merchant_id", "module", created_at.desc()),
+    )
+
 ### 数据库约束与索引
 
 | 表 | 约束/索引 | 说明 |
@@ -454,7 +511,9 @@ class ReplyHistory(Base):
 ---
 
 ## 正确性属性
+> 编号延续全局属性列表（architecture.md），模块内简称 E-P1 ~ E-P3。
 
+### 属性 E-P1（全局 #13）：敏感词扫描覆盖所有出站内容
 ### 属性 13：敏感词扫描覆盖所有出站内容
 
 对于任意准备发布的笔记、评论回复、私信，风控扫描都必须在平台动作执行前完成，且扫描耗时不超过 1 秒。
@@ -462,7 +521,7 @@ class ReplyHistory(Base):
 **验证需求：E1.2**
 
 ---
-
+### 属性 E-P2（全局 #14）：操作频率上限约束
 ### 属性 14：操作频率上限约束
 
 对于任意账号，在任意 1 小时滑动窗口内，评论回复次数不超过 20，私信发送次数不超过 50；笔记发布在任意自然日内不超过 3 次。超阈值时自动操作必须被阻止。
@@ -470,7 +529,7 @@ class ReplyHistory(Base):
 **验证需求：E2.1, E2.2**
 
 ---
-
+### 属性 E-P3（全局 #15）：回复内容去重
 ### 属性 15：回复内容去重
 
 对于任意待发送回复，其与该账号最近 100 条历史回复的最大文本相似度必须低于 `0.85`；若超过阈值，则必须触发改写流程，最多重试 2 次。

@@ -6,6 +6,12 @@ interface ApiResponse<T> {
   data: T | null;
 }
 
+function getAuthHeaders(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const token = localStorage.getItem("token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {}
@@ -14,9 +20,18 @@ async function request<T>(
     ...options,
     headers: {
       "Content-Type": "application/json",
+      ...getAuthHeaders(),
       ...options.headers,
     },
   });
+
+  if (res.status === 401) {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("token");
+      window.location.href = "/login";
+    }
+    throw new Error("认证已过期，请重新登录");
+  }
 
   const json: ApiResponse<T> = await res.json();
 
