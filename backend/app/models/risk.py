@@ -1,4 +1,195 @@
+"""Risk control ORM models."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from uuid import uuid4
+
+from sqlalchemy import (
+    ARRAY,
+    Boolean,
+    Enum,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.sql import func
+
 from app.db.session import Base
 
+risk_keyword_category_enum = Enum(
+    "platform_banned",
+    "contraband",
+    "exaggeration",
+    "competitor",
+    "custom",
+    name="risk_keyword_category_enum",
+)
 
-# TODO: 实现 RiskKeyword ORM 模型
+risk_match_mode_enum = Enum(
+    "exact",
+    "fuzzy",
+    name="risk_match_mode_enum",
+)
+
+risk_severity_enum = Enum(
+    "warn",
+    "block",
+    name="risk_severity_enum",
+)
+
+reply_history_source_type_enum = Enum(
+    "comment_reply",
+    "dm_send",
+    name="reply_history_source_type_enum",
+)
+
+
+class RiskKeyword(Base):
+    """System-level and merchant-level risk keywords."""
+
+    __tablename__ = "risk_keywords"
+    __table_args__ = (
+        UniqueConstraint(
+            "merchant_id",
+            "keyword",
+            "category",
+            name="uq_risk_keyword_scope",
+        ),
+        Index(
+            "ix_risk_keywords_merchant_category_active",
+            "merchant_id",
+            "category",
+            "is_active",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    merchant_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), index=True, nullable=True
+    )
+    keyword: Mapped[str] = mapped_column(String(128), nullable=False)
+    category: Mapped[str] = mapped_column(
+        risk_keyword_category_enum,
+        nullable=False,
+    )
+    replacement: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    match_mode: Mapped[str] = mapped_column(
+        risk_match_mode_enum,
+        nullable=False,
+        server_default="exact",
+    )
+    severity: Mapped[str] = mapped_column(
+        risk_severity_enum,
+        nullable=False,
+        server_default="block",
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default="true",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class AccountRiskConfig(Base):
+    """Per-account risk control configuration."""
+
+    __tablename__ = "account_risk_configs"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    account_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("accounts.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+    )
+    rest_windows: Mapped[list[str]] = mapped_column(
+        ARRAY(Text),
+        server_default="{}",
+        nullable=False,
+    )
+    comment_reply_limit_per_hour: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default="20",
+    )
+    dm_send_limit_per_hour: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default="50",
+    )
+    note_publish_limit_per_day: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default="3",
+    )
+    dedup_similarity_threshold: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        server_default="0.85",
+    )
+    competitor_alert_threshold_per_hour: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default="10",
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class ReplyHistory(Base):
+    """Latest outbound replies for deduplication and similarity checks."""
+
+    __tablename__ = "reply_histories"
+    __table_args__ = (
+        Index(
+            "ix_reply_histories_account_created_at",
+            "account_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    account_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("accounts.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    normalized_content: Mapped[str] = mapped_column(Text, nullable=False)
+    similarity_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_type: Mapped[str] = mapped_column(
+        reply_history_source_type_enum,
+        nullable=False,
+    )
+    source_record_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+        index=True,
+    )
