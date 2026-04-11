@@ -162,7 +162,14 @@ class RiskService:
     # ── 告警与日志 ──
     async def log_risk_event(account_id: UUID, event: RiskEventLog) -> None
     async def emit_alert_if_needed(account_id: UUID, trigger: AlertTrigger) -> None
-```
+```async def check_and_reserve_quota(account_id: UUID, action: str, db: AsyncSession) -> RateLimitDecision
+    async def apply_humanized_delay(account_id: UUID, action: str) -> float
+    async def detect_similarity(account_id: UUID, candidate: str, db: AsyncSession) -> SimilarityDecision
+    async def persist_reply_history(account_id: UUID, content: str, db: AsyncSession) -> None
+
+    # ── 告警与日志 ──
+    async def log_risk_event(account_id: UUID, event: RiskEventLog, db: AsyncSession) -> None
+    async def emit_alert_if_needed(account_id: UUID, trigger: AlertTrigger, db: AsyncSession) -> None
 
 关键设计决策：
 - `scan_output()` 为模块 C、D 的统一前置门禁接口，内部串联敏感词、竞品避嫌、相似度、频率和休息时段检查
