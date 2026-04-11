@@ -69,6 +69,20 @@ class RiskKeywordUpdateRequest(BaseModel):
         return stripped
 
 
+class RiskKeywordResponse(BaseModel):
+    """Risk keyword response payload."""
+
+    id: UUID
+    merchant_id: UUID | None = None
+    keyword: str
+    category: RiskKeywordCategory
+    replacement: str | None = None
+    match_mode: RiskMatchMode
+    severity: RiskSeverity
+    is_active: bool
+    created_at: datetime
+
+
 class RiskScanRequest(BaseModel):
     """Manual risk scan request payload."""
 
@@ -145,6 +159,7 @@ class AccountRiskQuotaResponse(BaseModel):
 class RiskEventResponse(BaseModel):
     """Risk event log item."""
 
+    id: UUID
     operation_type: str
     status: str
     risk_decision: RiskDecision
