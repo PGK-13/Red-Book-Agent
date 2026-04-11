@@ -206,3 +206,61 @@ class TestInteractionRiskIntegration:
         mocked_scan.assert_awaited_once()
         mocked_dispatch.assert_awaited_once()
         mocked_history.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_real_inbound_then_outbound_reply_flow_persists_history(
+        self,
+        db: AsyncSession,
+    ) -> None:
+        merchant_id = str(uuid4())
+        account = Account(
+            id=str(uuid4()),
+            merchant_id=merchant_id,
+            xhs_user_id=f"xhs_{uuid4().hex[:8]}",
+            nickname="interaction-real-flow",
+            access_type="browser",
+            status="active",
+        )
+        db.add(account)
+        from app.models.risk import RiskKeyword
+
+        db.add(
+            RiskKeyword(
+                merchant_id=None,
+                keyword="forbidden",
+                category="platform_banned",
+                replacement="allowed",
+                match_mode="exact",
+                severity="block",
+                is_active=True,
+            )
+        )
+        await db.flush()
+
+        with patch(
+            "app.services.interaction_service._dispatch_outbound_interaction",
+            new=AsyncMock(return_value=True),
+        ), patch(
+            "app.services.risk_service.send_alert",
+            new=AsyncMock(),
+        ):
+            inbound = await interaction_service.scan_inbound_comment(
+                merchant_id=merchant_id,
+                account_id=account.id,
+                content="forbidden inbound text",
+                db=db,
+            )
+            outbound = await interaction_service.send_comment_reply(
+                merchant_id=merchant_id,
+                account_id=account.id,
+                content="thanks for reaching out",
+                source_record_id=str(uuid4()),
+                db=db,
+            )
+
+        assert inbound.decision == "passed"
+        assert inbound.hits
+        assert outbound.decision.decision == "passed"
+        assert outbound.delivered is True
+        assert outbound.reply_history is not None
+        assert outbound.reply_history.content == "thanks for reaching out"
