@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import accounts, analytics, content, interaction, knowledge, risk
+from app.api.v1 import accounts, analytics, content, interaction, knowledge, qr_login, risk
 from app.config import settings
 
 app = FastAPI(
@@ -19,7 +19,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 注册路由
+# 注册路由（公开扫码登录路由必须在 accounts 之前，避免 /{account_id} 路径参数抢先匹配）
+app.include_router(qr_login.router, prefix="/api/v1")
 app.include_router(accounts.router, prefix="/api/v1")
 app.include_router(knowledge.router, prefix="/api/v1")
 app.include_router(content.router, prefix="/api/v1")

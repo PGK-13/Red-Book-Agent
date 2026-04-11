@@ -71,15 +71,15 @@
     - 验证响应格式符合 `BaseResponse` 包装
     - _需求: 1.2, 2.2, 4.1, 4.2, 4.3_
 
-- [ ] 5. 路由注册 — 修改 main.py 挂载公开路由
-  - [ ] 5.1 在 `backend/app/main.py` 中导入 `qr_login` 模块
+- [x] 5. 路由注册 — 修改 main.py 挂载公开路由
+  - [x] 5.1 在 `backend/app/main.py` 中导入 `qr_login` 模块
     - `from app.api.v1 import qr_login`
     - _需求: 5.3_
-  - [ ] 5.2 在 `accounts.router` 之前注册 `qr_login.router`
+  - [x] 5.2 在 `accounts.router` 之前注册 `qr_login.router`
     - `app.include_router(qr_login.router, prefix="/api/v1")` 必须在 `app.include_router(accounts.router, prefix="/api/v1")` 之前
     - 确保 `/api/v1/accounts/qr-login/start` 优先于 `/{account_id}/qr-login/start` 匹配
     - _需求: 5.3, 5.4_
-  - [ ]* 5.3 编写路由注册顺序验证测试
+  - [x] 5.3 编写路由注册顺序验证测试
     - **属性 6: 路由隔离 — 公开路由不要求认证**
     - **验证: 需求 5.1, 5.2 — 公开路由无需 JWT 即可访问，已认证路由仍需 JWT**
 
