@@ -20,7 +20,12 @@
     - 用于保存最近回复历史并支持最近 100 条相似度比对
     - _Requirements: E3.1, E3.2_
   - [ ] 1.4 创建 Alembic 迁移脚本生成 `risk_keywords`、`account_risk_configs`、`reply_histories`
-    - 在 `backend/app/db/migrations/versions/` 下新增迁移文件
+- [ ] 1.4 在 `backend/app/models/risk.py` 中新增 `OperationLog` 和 `Alert` ORM 模型
+    - OperationLog：`id(UUID PK)`、`merchant_id(UUID, indexed)`、`account_id(UUID FK → accounts.id)`、`operation_type(Enum: note_publish/comment_reply/dm_send/comment_inbound/dm_inbound)`、`status(Enum: success/blocked/rewrite_required/manual_review)`、`risk_decision(VARCHAR 32)`、`violations(TEXT[])`、`content_preview(Text, nullable)`、`created_at(TIMESTAMPTZ)`
+    - Alert：`id(UUID PK)`、`merchant_id(UUID, indexed)`、`account_id(UUID FK → accounts.id, nullable)`、`module(VARCHAR 32, default=risk)`、`alert_type(VARCHAR 64)`、`message(Text)`、`severity(Enum: info/warning/critical)`、`is_resolved(Boolean, default=False)`、`created_at(TIMESTAMPTZ)`
+    - 添加复合索引：`operation_logs(account_id, operation_type, created_at DESC)`、`alerts(merchant_id, module, created_at DESC)`
+    - _Requirements: E1.3, E2.2, E3.5_
+  - [ ] 1.5 创建 Alembic 迁移脚本生成 `risk_keywords`、`account_risk_configs`、`reply_histories`、`operation_logs`、`alerts`
     - 包含所需索引和唯一约束
     - _Requirements: E1.1, E2.4, E3.3_
 
