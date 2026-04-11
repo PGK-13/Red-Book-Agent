@@ -12,11 +12,23 @@ from app.schemas.account import (
     QrLoginStatusResponse,
 )
 from app.schemas.base import BaseResponse, ErrorResponse, PaginatedResponse
+from app.schemas.risk import (
+    AccountRiskQuotaResponse,
+    AccountRiskScheduleRequest,
+    RiskEventResponse,
+    RiskHitResponse,
+    RiskKeywordCreateRequest,
+    RiskKeywordUpdateRequest,
+    RiskScanRequest,
+    RiskScanResponse,
+)
 
 __all__ = [
     "AccountCreateRequest",
     "AccountResponse",
     "AccountStatusResponse",
+    "AccountRiskQuotaResponse",
+    "AccountRiskScheduleRequest",
     "BaseResponse",
     "CookieUpdateRequest",
     "ErrorResponse",
@@ -28,4 +40,10 @@ __all__ = [
     "ProxyUpdateRequest",
     "QrLoginStartResponse",
     "QrLoginStatusResponse",
+    "RiskEventResponse",
+    "RiskHitResponse",
+    "RiskKeywordCreateRequest",
+    "RiskKeywordUpdateRequest",
+    "RiskScanRequest",
+    "RiskScanResponse",
 ]
