@@ -16,6 +16,7 @@ class Settings(BaseSettings):
 
     # 数据库
     database_url: str = "postgresql+asyncpg://xhs:xhs_dev_password@localhost:5432/xhs_marketing"
+    test_database_url: str | None = None
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
