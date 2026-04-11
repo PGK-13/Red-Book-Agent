@@ -77,7 +77,7 @@
   - [ ] 3.8 实现内容变体注入与相似度检测
     - `inject_variants(content)`：同义词替换、语序微调、语气词增减
     - `detect_similarity(account_id, candidate, db)`：与最近 100 条历史回复比对，阈值 `0.85`
-    - 相似度超阈值时返回命中历史记录与改写建议
+- 注意：变体注入（同义词替换、语序微调）属于模块 C 内容生成引擎的职责，E 模块只负责检测
     - _Requirements: E3.1, E3.2_
   - [ ] 3.9 实现竞品避嫌检测
     - 对 `category=competitor` 的关键词执行全词匹配和编辑距离 ≤ 1 的模糊匹配
