@@ -1,4 +1,4 @@
-"""Interaction service helpers with risk-control integration."""
+"""Interaction service helpers with risk control integration."""
 
 from __future__ import annotations
 
