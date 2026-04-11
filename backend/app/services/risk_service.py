@@ -581,6 +581,16 @@ async def _run_scan_output_stages(
 ) -> tuple[RiskScanResponse, dict[str, str | list[str] | dict | None]] | None:
     rest_decision = await _check_rest_window_for_output(account_id=account_id, scene=scene, db=db)
     if rest_decision is not None:
+        await emit_alert_if_needed(
+            merchant_id=merchant_id,
+            alert_type="rest_window_violation",
+            message=(
+                f"Account {account_id} attempted {scene} during a configured rest window "
+                "and the automation was blocked"
+            ),
+            db=db,
+            severity="warning",
+        )
         return rest_decision, {
             "status": "failed",
             "violations": [],

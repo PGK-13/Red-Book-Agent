@@ -182,7 +182,10 @@ class TestContentDraftOutboundRisk:
                     rewrite_required,
                 ]
             ),
-        ) as mocked_scan:
+        ) as mocked_scan, patch(
+            "app.services.content_service.send_alert",
+            new=AsyncMock(),
+        ) as mocked_alert:
             result = await content_service.review_draft_outbound_risk(
                 merchant_id=merchant_id,
                 draft_id=draft.id,
@@ -197,3 +200,4 @@ class TestContentDraftOutboundRisk:
         assert draft.alt_titles == ["promo alt"]
         assert draft.hashtags == ["promo-tag"]
         assert mocked_scan.await_count == 4
+        mocked_alert.assert_awaited_once()
