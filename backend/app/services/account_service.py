@@ -18,6 +18,9 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from jose import jwt
+
+from app.config import settings
 from app.core.notifications import send_alert
 from app.core.rate_limiter import get_redis
 from app.core.security import decrypt, encrypt
@@ -781,6 +784,7 @@ async def get_browser_context(
 
 QR_SESSION_TTL = 300  # 5 分钟
 QR_SESSION_PREFIX = "qr_session:"
+PUB_QR_SESSION_PREFIX = "pub_qr_session:"
 XHS_LOGIN_URL = "https://creator.xiaohongshu.com/login"
 
 
@@ -962,3 +966,188 @@ async def poll_qr_login_status(
         return {"status": "success"}
 
     return {"status": "waiting"}
+
+
+# ── 3.8 公开扫码登录（无需认证） ──
+
+
+def _create_jwt_token(
+    xhs_user_id: str,
+    nickname: str,
+    avatar: str | None,
+) -> str:
+    """签发 JWT token。
+
+    使用 app.config.settings 中的 JWT 配置签发包含用户信息的 JWT。
+
+    Args:
+        xhs_user_id: 小红书用户 ID，写入 JWT sub 字段。
+        nickname: 用户昵称。
+        avatar: 用户头像 URL，可能为 None。
+
+    Returns:
+        编码后的 JWT 字符串。
+    """
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(minutes=settings.jwt_expire_minutes)
+    payload = {
+        "sub": xhs_user_id,
+        "nickname": nickname,
+        "avatar": avatar,
+        "exp": expire,
+    }
+    return jwt.encode(
+        payload,
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
+async def public_start_qr_login() -> dict[str, str]:
+    """启动公开扫码登录，返回二维码图片和 session_id。
+
+    无需 merchant_id 和 account_id 参数。通过 Playwright 打开小红书登录页，
+    截取二维码区域为 base64 图片。在 Redis 中创建扫码会话（TTL=5min）。
+
+    Returns:
+        {"session_id": str, "qr_image_base64": str}。
+
+    Raises:
+        HTTPException: Playwright 未安装时返回 503。
+    """
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Playwright 未安装，无法启动扫码登录",
+        )
+
+    pw_instance = await async_playwright().start()
+    browser = await pw_instance.chromium.launch(headless=True)
+    page = await browser.new_page()
+
+    try:
+        await page.goto(XHS_LOGIN_URL, wait_until="networkidle")
+
+        # 截取二维码区域
+        qr_element = await page.query_selector(".qrcode-img, .login-qrcode img, canvas")
+        if qr_element:
+            qr_bytes = await qr_element.screenshot()
+        else:
+            # 回退：截取整个页面
+            qr_bytes = await page.screenshot()
+
+        qr_image_base64 = base64.b64encode(qr_bytes).decode()
+
+        # 创建 Redis 会话
+        session_id = str(uuid4())
+        redis = get_redis()
+        session_data = json.dumps({
+            "status": "waiting",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        await redis.setex(
+            f"{PUB_QR_SESSION_PREFIX}{session_id}",
+            QR_SESSION_TTL,
+            session_data,
+        )
+
+        return {"session_id": session_id, "qr_image_base64": qr_image_base64}
+
+    except Exception:
+        raise
+    finally:
+        await page.close()
+        await browser.close()
+        await pw_instance.stop()
+
+
+async def public_poll_qr_login_status(session_id: str) -> dict:
+    """轮询公开扫码登录状态。
+
+    从 Redis 读取 pub_qr_session:{session_id}，检测登录是否成功。
+    登录成功时提取用户信息并签发 JWT。
+
+    Args:
+        session_id: 扫码会话 ID。
+
+    Returns:
+        {"status": str, "token": str | None, "user": dict | None}。
+    """
+    redis = get_redis()
+    session_key = f"{PUB_QR_SESSION_PREFIX}{session_id}"
+    raw = await redis.get(session_key)
+
+    if raw is None:
+        return {"status": "expired", "token": None, "user": None}
+
+    session_data = json.loads(raw)
+
+    # 已成功，直接返回缓存结果
+    if session_data.get("status") == "success":
+        return {
+            "status": "success",
+            "token": session_data.get("token"),
+            "user": session_data.get("user"),
+        }
+
+    # 状态为 waiting，通过 Playwright 检测登录状态
+    login_success = False
+    user_info: dict | None = None
+
+    try:
+        from playwright.async_api import async_playwright
+
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=True)
+            try:
+                page = await browser.new_page()
+                await page.goto(XHS_LOGIN_URL, wait_until="networkidle")
+
+                # 检测登录成功标志：URL 变化或特定元素出现
+                current_url = page.url
+                if "login" not in current_url.lower() or await page.query_selector(
+                    ".user-avatar, .creator-home"
+                ):
+                    login_success = True
+                    # 提取用户信息
+                    nickname = await _safe_text(page, ".user-nickname") or "未知用户"
+                    avatar = await _safe_text(page, ".user-avatar img")
+                    # 尝试从 URL 或页面提取 xhs_user_id
+                    xhs_user_id = current_url.split("/")[-1] if "/" in current_url else str(uuid4())
+                    user_info = {
+                        "nickname": nickname,
+                        "avatar": avatar,
+                        "xhs_user_id": xhs_user_id,
+                    }
+
+                await page.close()
+            finally:
+                await browser.close()
+
+    except ImportError:
+        logger.warning("Playwright not available for public QR login polling")
+    except Exception:
+        logger.exception("Error during public QR login status check for session %s", session_id)
+
+    if login_success and user_info:
+        # 签发 JWT
+        token = _create_jwt_token(
+            xhs_user_id=user_info["xhs_user_id"],
+            nickname=user_info["nickname"],
+            avatar=user_info.get("avatar"),
+        )
+
+        # 更新 Redis session 状态
+        session_data["status"] = "success"
+        session_data["token"] = token
+        session_data["user"] = user_info
+        remaining_ttl = await redis.ttl(session_key)
+        if remaining_ttl > 0:
+            await redis.setex(session_key, remaining_ttl, json.dumps(session_data))
+
+        logger.info("Public QR login success for session %s", session_id)
+        return {"status": "success", "token": token, "user": user_info}
+
+    return {"status": "waiting", "token": None, "user": None}

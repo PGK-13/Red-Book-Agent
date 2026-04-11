@@ -21,21 +21,21 @@
     - **属性 3: waiting/expired 状态 token 和 user 为 null**
     - **验证: 需求 2.4 — 当 status 为 waiting 或 expired 时，token 和 user 为 None**
 
-- [ ] 2. Service 层 — 新增公开扫码登录函数和 JWT 签发
-  - [ ] 2.1 在 `backend/app/services/account_service.py` 中新增 `_create_jwt_token()` 私有函数
+- [x] 2. Service 层 — 新增公开扫码登录函数和 JWT 签发
+  - [x] 2.1 在 `backend/app/services/account_service.py` 中新增 `_create_jwt_token()` 私有函数
     - 参数：`xhs_user_id: str, nickname: str, avatar: str | None`
     - 使用 `app.config.settings` 读取 `jwt_secret_key`、`jwt_algorithm`、`jwt_expire_minutes`
     - JWT payload 包含 `sub`（xhs_user_id）、`nickname`、`avatar`、`exp` 字段
     - 使用 `python-jose` 的 `jwt.encode()` 签发
     - _需求: 3.1, 3.2, 3.3, 3.4_
-  - [ ] 2.2 在 `backend/app/services/account_service.py` 中新增 `public_start_qr_login()` 异步函数
+  - [x] 2.2 在 `backend/app/services/account_service.py` 中新增 `public_start_qr_login()` 异步函数
     - 无需 `merchant_id` 和 `account_id` 参数
     - 使用 Playwright 打开小红书登录页，截取二维码为 base64
     - 在 Redis 中创建会话，key 格式 `pub_qr_session:{session_id}`，TTL 300 秒，初始状态 `waiting`
     - Playwright 不可用时返回 HTTP 503
     - 返回 `{"session_id": str, "qr_image_base64": str}`
     - _需求: 1.1, 1.3, 1.4_
-  - [ ] 2.3 在 `backend/app/services/account_service.py` 中新增 `public_poll_qr_login_status()` 异步函数
+  - [x] 2.3 在 `backend/app/services/account_service.py` 中新增 `public_poll_qr_login_status()` 异步函数
     - 参数：`session_id: str`
     - 从 Redis 读取 `pub_qr_session:{session_id}`，key 不存在返回 `expired`
     - 状态为 `waiting` 时通过 Playwright 检测登录状态
