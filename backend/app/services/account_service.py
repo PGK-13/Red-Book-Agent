@@ -115,6 +115,7 @@ async def create_account(
     )
     db.add(account)
     await db.flush()
+    await db.refresh(account, ["persona", "proxy_config"])
     return account
 
 
