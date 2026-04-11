@@ -201,3 +201,54 @@ class TestContentDraftOutboundRisk:
         assert draft.hashtags == ["promo-tag"]
         assert mocked_scan.await_count == 4
         mocked_alert.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_review_draft_real_risk_flow_rewrites_then_passes(
+        self,
+        db: AsyncSession,
+    ) -> None:
+        merchant_id = str(uuid4())
+        account = Account(
+            id=str(uuid4()),
+            merchant_id=merchant_id,
+            xhs_user_id=f"xhs_{uuid4().hex[:8]}",
+            nickname="content-real-risk",
+            access_type="browser",
+            status="active",
+        )
+        draft = ContentDraft(
+            account_id=account.id,
+            title="promo title",
+            body="promo body copy",
+            alt_titles=["promo alt"],
+            hashtags=["promo-tag"],
+            risk_status="pending",
+            status="draft",
+        )
+        db.add_all([account, draft])
+        from app.models.risk import RiskKeyword
+
+        db.add(
+            RiskKeyword(
+                merchant_id=merchant_id,
+                keyword="promo",
+                category="custom",
+                replacement="intro",
+                match_mode="exact",
+                severity="warn",
+                is_active=True,
+            )
+        )
+        await db.flush()
+
+        result = await content_service.review_draft_outbound_risk(
+            merchant_id=merchant_id,
+            draft_id=draft.id,
+            db=db,
+        )
+
+        assert result.decision.decision == "passed"
+        assert result.attempts_used == 1
+        assert draft.risk_status == "passed"
+        assert "intro" in draft.title
+        assert "intro" in draft.body
