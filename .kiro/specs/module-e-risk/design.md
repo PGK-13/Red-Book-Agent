@@ -440,6 +440,54 @@ class ReplyHistory(Base):
     created_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ, server_default=func.now())
 ```
 
+
+class OperationLog(Base):
+    """风控操作日志，记录每次扫描的决策结果。"""
+    __tablename__ = "operation_logs"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    merchant_id: Mapped[UUID] = mapped_column(index=True, nullable=False)
+    account_id: Mapped[UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    operation_type: Mapped[str] = mapped_column(
+        Enum("note_publish", "comment_reply", "dm_send", "comment_inbound", "dm_inbound", name="operation_type_enum"),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(
+        Enum("success", "blocked", "rewrite_required", "manual_review", name="operation_status_enum"),
+        nullable=False,
+    )
+    risk_decision: Mapped[str] = mapped_column(String(32), nullable=False)
+    violations: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
+    content_preview: Mapped[str | None] = mapped_column(Text, nullable=True)  # 脱敏后的内容摘要
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ, server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_operation_logs_account_type_created", "account_id", "operation_type", created_at.desc()),
+    )
+
+
+class Alert(Base):
+    """风控告警记录。"""
+    __tablename__ = "alerts"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    merchant_id: Mapped[UUID] = mapped_column(index=True, nullable=False)
+    account_id: Mapped[UUID | None] = mapped_column(ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True)
+    module: Mapped[str] = mapped_column(String(32), nullable=False, default="risk")
+    alert_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    severity: Mapped[str] = mapped_column(
+        Enum("info", "warning", "critical", name="alert_severity_enum"),
+        default="warning",
+        nullable=False,
+    )
+    is_resolved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ, server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_alerts_merchant_module_created", "merchant_id", "module", created_at.desc()),
+    )
+
 ### 数据库约束与索引
 
 | 表 | 约束/索引 | 说明 |
