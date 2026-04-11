@@ -51,20 +51,20 @@
 - [x] 3. 检查点 — 确保 Schema 和 Service 层代码无语法错误
   - 确保所有测试通过，如有疑问请向用户确认。
 
-- [ ] 4. 路由层 — 新建公开扫码登录路由
-  - [ ] 4.1 创建 `backend/app/api/v1/qr_login.py`，定义 `router = APIRouter(prefix="/accounts/qr-login", tags=["扫码登录（公开）"])`
+- [x] 4. 路由层 — 新建公开扫码登录路由
+  - [x] 4.1 创建 `backend/app/api/v1/qr_login.py`，定义 `router = APIRouter(prefix="/accounts/qr-login", tags=["扫码登录（公开）"])`
     - 不引入任何认证依赖（不使用 `CurrentMerchantId`、`HTTPBearer`）
     - _需求: 5.1_
-  - [ ] 4.2 实现 `POST /start` 端点
+  - [x] 4.2 实现 `POST /start` 端点
     - 调用 `account_service.public_start_qr_login()`
     - 返回 `BaseResponse[QrLoginStartResponse]`
     - _需求: 1.1, 1.2, 4.1, 4.2_
-  - [ ] 4.3 实现 `GET /status` 端点
+  - [x] 4.3 实现 `GET /status` 端点
     - 接收 `session_id: str = Query(...)` 参数
     - 调用 `account_service.public_poll_qr_login_status(session_id)`
     - 返回 `BaseResponse[PublicQrLoginStatusResponse]`
     - _需求: 2.1, 2.2, 4.1, 4.3_
-  - [ ]* 4.4 编写路由层单元测试
+  - [x] 4.4 编写路由层单元测试
     - 使用 `httpx.AsyncClient` 测试两个端点
     - Mock `account_service` 的公开扫码函数
     - 验证无 `Authorization` header 时请求正常处理
