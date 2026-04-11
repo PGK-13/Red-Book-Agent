@@ -115,7 +115,8 @@
 
 - [ ] 6. 集成模块 C / D 的风控调用链
   - [ ] 6.1 在 `backend/app/services/content_service.py` 中接入出站风控
-    - 草稿生成完成后、正式发布前调用 `RiskService.scan_output(..., scene="note_publish")`
+- [ ]* 6. 集成模块 C / D 的风控调用链（建议在 C/D 模块各自实现时接入，此处仅作参考）
+  - [ ]* 6.1 在 `backend/app/services/content_service.py` 中接入出站风控
     - 命中可改写问题时驱动内容引擎局部重写，最多 3 次
     - 连续失败后将 `content_drafts.risk_status` 置为 `manual_review`
     - _Requirements: E1.4, E2.1, E2.4_
