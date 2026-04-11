@@ -140,7 +140,7 @@ class TestRiskAPI:
             id=str(uuid4()),
             merchant_id=merchant_id,
             xhs_user_id=f"xhs_{uuid4().hex[:8]}",
-            nickname="risk-api-events",
+            nickname="riskapi-events",
             access_type="browser",
             status="active",
         )
