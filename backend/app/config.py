@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o"
 
     # 加密（开发环境默认值，生产必须替换）
-    encryption_key: str = "dev-key-replace-in-production-32b="
+    encryption_key: str = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
 
     # JWT（开发环境默认值，生产必须替换）
     jwt_secret_key: str = "dev-jwt-secret-replace-in-production"
