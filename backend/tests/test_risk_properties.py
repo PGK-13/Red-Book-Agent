@@ -39,7 +39,7 @@ def _phrase_strategy():
 class TestRiskProperties:
     @pytest.mark.asyncio
     @settings(
-        max_examples=25,
+        max_examples=100,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -93,7 +93,7 @@ class TestRiskProperties:
 
     @pytest.mark.asyncio
     @settings(
-        max_examples=30,
+        max_examples=100,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -146,7 +146,7 @@ class TestRiskProperties:
 
     @pytest.mark.asyncio
     @settings(
-        max_examples=25,
+        max_examples=100,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
