@@ -108,24 +108,24 @@
     - 固定定位：`fixed top-0 left-0 lg:left-[240px] right-0 h-[64px]`
     - _Requirements: F2.1, F2.4, F2.8_
 
-- [ ] 5. 组装页面与 Layout
-  - [ ] 5.1 重写 `frontend/app/layout.tsx` — 根 Layout（纯净壳）
+- [x] 5. 组装页面与 Layout
+  - [x] 5.1 重写 `frontend/app/layout.tsx` — 根 Layout（纯净壳）
     - 只包含 `<html>`、`<body>`、Inter 字体加载、`globals.css` 引入
     - 用 `<AuthProvider>` 包裹 `{children}`
     - 不包含 Sidebar、TopNav 或任何业务 UI
     - _Requirements: F2.7_
-  - [ ] 5.2 创建 `frontend/app/login/page.tsx` — 扫码登录页面
+  - [x] 5.2 创建 `frontend/app/login/page.tsx` — 扫码登录页面
     - 全屏米粉渐变背景：`min-h-screen bg-gradient-to-br from-[#FFE0E6] via-[#FFF5F5] to-white`
     - 居中布局：`flex items-center justify-center`
     - 渲染 `<QrLoginCard />`
     - 如果用户已登录（`useAuth().token` 存在），直接 `router.push("/dashboard")`
     - _Requirements: F1.1, F1.7_
-  - [ ] 5.3 创建 `frontend/app/(dashboard)/layout.tsx` — 主应用 Layout
+  - [x] 5.3 创建 `frontend/app/(dashboard)/layout.tsx` — 主应用 Layout
     - 用 `<AuthGuard>` 包裹整个 layout
     - 渲染 `<Sidebar />` + `<TopNav />` + `<main>` 内容区
     - `<main>` 样式：`lg:ml-[240px] mt-[64px] min-h-screen bg-bg-primary`
     - _Requirements: F2.1, F2.7_
-  - [ ] 5.4 迁移现有页面到 `(dashboard)` Route Group
+  - [x] 5.4 迁移现有页面到 `(dashboard)` Route Group
     - 将 `frontend/app/dashboard/page.tsx` 移动到 `frontend/app/(dashboard)/dashboard/page.tsx`
     - 将 `frontend/app/accounts/page.tsx` 移动到 `frontend/app/(dashboard)/accounts/page.tsx`
     - 将 `frontend/app/content/page.tsx` 移动到 `frontend/app/(dashboard)/content/page.tsx`
