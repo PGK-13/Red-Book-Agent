@@ -124,7 +124,7 @@
     - 对自动回复、自动私信发送前调用 `scan_output`
     - 回复发送成功后写入 `ReplyHistory`
     - _Requirements: E1.3, E2.1, E3.1, E3.2_
-  - [ ] 6.3 在相关 Agent / Tool 层接入变体注入与等待节奏
+  - [ ]* 6.3 在相关 Agent / Tool 层接入变体注入与等待节奏
     - `agent/tools/comment_reply.py`
     - `agent/tools/dm_sender.py`
     - `agent/tools/risk_scan.py`
