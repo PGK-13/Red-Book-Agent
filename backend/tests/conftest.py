@@ -24,6 +24,7 @@ from app.core import rate_limiter
 from app.db.session import Base
 from app.models.analytics import Alert, OperationLog  # noqa: F401
 from app.models.account import Account, AccountPersona, ProxyConfig  # noqa: F401
+from app.models.content import ContentDraft  # noqa: F401
 from app.models.risk import AccountRiskConfig, ReplyHistory, RiskKeyword  # noqa: F401
 
 
@@ -71,6 +72,7 @@ async def _setup_db(request: pytest.FixtureRequest):
             await conn.execute(text("DELETE FROM reply_histories"))
             await conn.execute(text("DELETE FROM account_risk_configs"))
             await conn.execute(text("DELETE FROM risk_keywords"))
+            await conn.execute(text("DELETE FROM content_drafts"))
             await conn.execute(text("DELETE FROM proxy_configs"))
             await conn.execute(text("DELETE FROM account_personas"))
             await conn.execute(text("DELETE FROM accounts"))
