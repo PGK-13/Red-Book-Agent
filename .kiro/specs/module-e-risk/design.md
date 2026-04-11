@@ -132,12 +132,12 @@ class RiskService:
     """风控与合规编排服务。"""
 
     # ── 配置管理 ──
-    async def list_keywords(merchant_id: str, category: str | None, is_active: bool | None) -> list[RiskKeyword]
-    async def create_keyword(merchant_id: str, data: RiskKeywordCreateRequest) -> RiskKeyword
-    async def update_keyword(merchant_id: str, keyword_id: UUID, data: RiskKeywordUpdateRequest) -> RiskKeyword
-    async def delete_keyword(merchant_id: str, keyword_id: UUID) -> None
-    async def update_account_schedule(merchant_id: str, account_id: UUID, data: AccountRiskScheduleRequest) -> None
-    async def get_account_quota(merchant_id: str, account_id: UUID) -> AccountRiskQuotaResponse
+ async def list_keywords(merchant_id: str, category: str | None, is_active: bool | None, db: AsyncSession) -> list[RiskKeyword]
+    async def create_keyword(merchant_id: str, data: RiskKeywordCreateRequest, db: AsyncSession) -> RiskKeyword
+    async def update_keyword(merchant_id: str, keyword_id: UUID, data: RiskKeywordUpdateRequest, db: AsyncSession) -> RiskKeyword
+    async def delete_keyword(merchant_id: str, keyword_id: UUID, db: AsyncSession) -> None
+    async def update_account_schedule(merchant_id: str, account_id: UUID, data: AccountRiskScheduleRequest, db: AsyncSession) -> None
+    async def get_account_quota(merchant_id: str, account_id: UUID, db: AsyncSession) -> AccountRiskQuotaResponse
 
     # ── 核心扫描 ──
     async def scan_output(
