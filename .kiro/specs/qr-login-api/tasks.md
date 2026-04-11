@@ -6,14 +6,14 @@
 
 ## 任务
 
-- [ ] 1. 扩展 Schema — 新增 UserInfo 和 PublicQrLoginStatusResponse
-  - [ ] 1.1 在 `backend/app/schemas/account.py` 中新增 `UserInfo` 模型
+- [x] 1. 扩展 Schema — 新增 UserInfo 和 PublicQrLoginStatusResponse
+  - [x] 1.1 在 `backend/app/schemas/account.py` 中新增 `UserInfo` 模型
     - 包含 `nickname: str`、`avatar: str | None = None`、`xhs_user_id: str` 字段
     - _需求: 6.2, 2.3_
-  - [ ] 1.2 在 `backend/app/schemas/account.py` 中新增 `PublicQrLoginStatusResponse` 模型
+  - [x] 1.2 在 `backend/app/schemas/account.py` 中新增 `PublicQrLoginStatusResponse` 模型
     - 包含 `status: Literal["waiting", "success", "expired"]`、`token: str | None = None`、`user: UserInfo | None = None` 字段
     - _需求: 6.1, 2.1, 2.3, 2.4_
-  - [ ]* 1.3 编写 Schema 属性测试
+  - [x] 1.3 编写 Schema 属性测试
     - **属性 1: PublicQrLoginStatusResponse 状态字段约束**
     - **验证: 需求 6.1 — status 只能为 "waiting"、"success"、"expired" 之一**
     - **属性 2: success 状态必须携带 token 和 user**

@@ -108,3 +108,19 @@ class QrLoginStatusResponse(BaseModel):
     """扫码登录状态轮询响应。"""
 
     status: Literal["waiting", "success", "expired"]
+
+
+class UserInfo(BaseModel):
+    """用户信息（JWT 签发后返回给前端）。"""
+
+    nickname: str
+    avatar: str | None = None
+    xhs_user_id: str
+
+
+class PublicQrLoginStatusResponse(BaseModel):
+    """公开扫码登录状态轮询响应。"""
+
+    status: Literal["waiting", "success", "expired"]
+    token: str | None = None
+    user: UserInfo | None = None
