@@ -768,7 +768,7 @@ async def list_account_events(
     db: AsyncSession,
     limit: int = 50,
 ) -> list[RiskEventResponse]:
-    """Return recent risk-related operation log events for one account."""
+    """Return recent operation log events for one account."""
 
     await _ensure_account_belongs_to_merchant(
         merchant_id=merchant_id,
