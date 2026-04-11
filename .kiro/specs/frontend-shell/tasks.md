@@ -24,14 +24,14 @@
     - 更新滚动条样式适配浅色主题
     - _Requirements: F3.1_
 
-- [ ] 2. 实现认证状态管理模块
-  - [ ] 2.1 创建 `frontend/lib/auth-context.ts` — AuthContext 定义
+- [x] 2. 实现认证状态管理模块
+  - [x] 2.1 创建 `frontend/lib/auth-context.ts` — AuthContext 定义
     - 定义 `AuthState` 类型：`{ token: string | null; user: UserInfo | null; isLoading: boolean }`
     - 定义 `AuthContextValue` 类型：`AuthState` + `login(token: string, user: UserInfo): void` + `logout(): void`
     - 导出 `AuthContext` 和 `useAuth` hook
     - `UserInfo` 类型：`{ nickname: string; avatar: string | null; xhs_user_id: string }`
     - _Requirements: F4.1, F4.2_
-  - [ ] 2.2 创建 `frontend/components/AuthProvider.tsx` — 认证状态 Provider
+  - [x] 2.2 创建 `frontend/components/AuthProvider.tsx` — 认证状态 Provider
     - `"use client"` 组件
     - 初始化时从 `localStorage` 读取 JWT，解析 payload 获取用户信息
     - 提供 `login()` 方法：存储 JWT 到 localStorage，更新 context state
@@ -39,7 +39,7 @@
     - 检查 JWT 过期时间（`exp` 字段），过期时自动调用 `logout()`
     - 渲染 `AuthContext.Provider` 包裹 `children`
     - _Requirements: F4.1, F4.2, F4.3_
-  - [ ] 2.3 更新 `frontend/lib/api-client.ts` — 注入认证头 + 401 拦截
+  - [x] 2.3 更新 `frontend/lib/api-client.ts` — 注入认证头 + 401 拦截
     - 在 `request()` 函数中从 `localStorage` 读取 JWT，自动添加 `Authorization: Bearer <token>` 头
     - 当响应状态码为 401 时，清除 localStorage JWT 并 `window.location.href = "/login"`
     - 保持现有的 `apiClient.get/post/put/delete` 接口不变
