@@ -142,7 +142,7 @@
     - 更新按钮、卡片、输入框等组件规范的配色描述
     - _Requirements: F3.1, F3.2, F3.3, F3.4, F3.5, F3.6_
 
-- [-] 7. Checkpoint — 验证端到端流程
+- [x] 7. Checkpoint — 验证端到端流程
   - 启动前端 dev server，验证：
     - 访问 `/` 重定向到 `/dashboard`，未登录时跳转到 `/login`
     - `/login` 页面展示米粉渐变背景 + 白色扫码卡片
