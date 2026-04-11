@@ -45,8 +45,8 @@
     - 保持现有的 `apiClient.get/post/put/delete` 接口不变
     - _Requirements: F4.3, F4.4_
 
-- [ ] 3. 实现扫码登录页组件
-  - [ ] 3.1 创建 `frontend/components/QrLoginCard.tsx` — 扫码登录卡片
+- [x] 3. 实现扫码登录页组件
+  - [x] 3.1 创建 `frontend/components/QrLoginCard.tsx` — 扫码登录卡片
     - `"use client"` 组件
     - Props：无（内部管理所有状态）
     - 内部状态：`qrImage: string | null`、`sessionId: string | null`、`status: "loading" | "waiting" | "success" | "expired" | "error"`
