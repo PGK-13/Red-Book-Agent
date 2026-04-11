@@ -8,6 +8,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.notifications import send_alert
 from app.models.account import Account
 from app.models.content import ContentDraft
 from app.schemas.risk import RiskScanResponse
@@ -48,6 +49,7 @@ async def review_draft_outbound_risk(
     )
 
     attempts_used = 0
+    should_emit_manual_review_alert = False
     original_snapshot = _snapshot_draft_content(draft)
     current_decision = await _scan_draft_outbound(merchant_id=merchant_id, draft=draft, db=db)
 
@@ -70,12 +72,25 @@ async def review_draft_outbound_risk(
     elif current_decision.decision == "rewrite_required":
         _restore_draft_content(draft, original_snapshot)
         draft.risk_status = "manual_review"
+        should_emit_manual_review_alert = True
         current_decision = current_decision.model_copy(
             update={"decision": "manual_review", "retryable": False}
         )
     else:
         _restore_draft_content(draft, original_snapshot)
         draft.risk_status = "manual_review"
+        should_emit_manual_review_alert = True
+
+    if should_emit_manual_review_alert:
+        await send_alert(
+            merchant_id=merchant_id,
+            alert_type="risk_rewrite_failed",
+            message=(
+                f"Draft {draft.id} for account {draft.account_id} exhausted risk rewrite "
+                "retries and was moved to manual review"
+            ),
+            severity="warning",
+        )
 
     await db.flush()
     return DraftRiskReviewResult(

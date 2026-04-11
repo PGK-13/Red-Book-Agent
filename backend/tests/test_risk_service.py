@@ -623,7 +623,10 @@ class TestOutboundRiskScan:
         ) as mocked_rest, patch(
             "app.services.risk_service._check_quota_for_output",
             new=AsyncMock(),
-        ) as mocked_quota:
+        ) as mocked_quota, patch(
+            "app.services.risk_service.emit_alert_if_needed",
+            new=AsyncMock(),
+        ) as mocked_alert:
             result = await risk_service.scan_output(
                 merchant_id=merchant_id,
                 account_id=account.id,
@@ -635,6 +638,7 @@ class TestOutboundRiskScan:
         assert result.decision == "blocked"
         mocked_rest.assert_awaited_once()
         mocked_quota.assert_not_awaited()
+        mocked_alert.assert_awaited_once()
 
         log_result = await db.execute(select(OperationLog))
         logs = log_result.scalars().all()
