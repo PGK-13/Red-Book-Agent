@@ -70,8 +70,8 @@
     - 卡片样式：`bg-white rounded-2xl shadow-lg p-8 w-[400px]`
     - _Requirements: F1.1, F1.2, F1.3, F1.4, F1.5, F1.6_
 
-- [ ] 4. 实现主布局组件
-  - [ ] 4.1 创建 `frontend/components/AuthGuard.tsx` — 认证守卫
+- [x] 4. 实现主布局组件
+  - [x] 4.1 创建 `frontend/components/AuthGuard.tsx` — 认证守卫
     - `"use client"` 组件
     - Props：`{ children: React.ReactNode }`
     - 使用 `useAuth()` 获取认证状态
@@ -79,7 +79,7 @@
     - `token` 为 null 时调用 `router.push("/login")` 并返回 null
     - `token` 有效时渲染 `children`
     - _Requirements: F1.1, F2.7_
-  - [ ] 4.2 重写 `frontend/components/Sidebar.tsx` — 米粉色调侧边栏
+  - [x] 4.2 重写 `frontend/components/Sidebar.tsx` — 米粉色调侧边栏
     - `"use client"` 组件
     - 顶部：品牌 Logo 区域（粉色心形 SVG + "RedFlow" 文字，`h-[64px]`）
     - 导航项列表：数据看板、账号管理、内容管理、实时会话、HITL 审核、告警中心
@@ -91,7 +91,7 @@
     - 移动端隐藏：`hidden lg:flex`
     - 每个导航项配一个简单的内联 SVG 图标（首页、用户、文件、消息、审核、铃铛）
     - _Requirements: F2.1, F2.2, F2.3, F2.8_
-  - [ ] 4.3 创建 `frontend/components/UserMenu.tsx` — 用户菜单
+  - [x] 4.3 创建 `frontend/components/UserMenu.tsx` — 用户菜单
     - `"use client"` 组件
     - 使用 `useAuth()` 获取用户信息
     - 展示用户头像（32x32 圆形，无头像时显示昵称首字 + 粉色背景）+ 昵称
@@ -99,7 +99,7 @@
     - 菜单项："退出登录"（点击调用 `useAuth().logout()`）
     - 点击外部区域关闭菜单
     - _Requirements: F2.4, F2.5, F2.6_
-  - [ ] 4.4 重写 `frontend/components/TopNav.tsx` — 米粉色调顶部导航
+  - [x] 4.4 重写 `frontend/components/TopNav.tsx` — 米粉色调顶部导航
     - `"use client"` 组件
     - 左侧：移动端 Logo（`lg:hidden`）
     - 中间：移动端横向滚动导航（`lg:hidden`，复用 Sidebar 的导航项数据）
