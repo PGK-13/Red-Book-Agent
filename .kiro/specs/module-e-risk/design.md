@@ -202,7 +202,7 @@ class RiskService:
 - `note_publish`：每天最多 3 次
 
 实现策略：
-- Redis 维护滑动窗口计数键，建议键格式：
+- Redis 维护固定窗口计数键（注意：非滑动窗口，MVP 阶段使用固定窗口简化实现，后续可升级为 sorted set 滑动窗口），建议键格式：
   - `risk:quota:{account_id}:comment_reply:{yyyyMMddHH}`
   - `risk:quota:{account_id}:dm_send:{yyyyMMddHH}`
   - `risk:quota:{account_id}:note_publish:{yyyyMMdd}`
