@@ -785,7 +785,10 @@ async def get_browser_context(
 QR_SESSION_TTL = 300  # 5 分钟
 QR_SESSION_PREFIX = "qr_session:"
 PUB_QR_SESSION_PREFIX = "pub_qr_session:"
-XHS_LOGIN_URL = "https://creator.xiaohongshu.com/login"
+XHS_LOGIN_URL = "https://www.xiaohongshu.com"
+
+# 活跃的公开扫码 Playwright 会话（session_id → {pw, browser, context, page}）
+_active_pub_qr_sessions: dict[str, dict] = {}
 
 
 async def start_qr_login(
@@ -1008,6 +1011,7 @@ async def public_start_qr_login() -> dict[str, str]:
 
     无需 merchant_id 和 account_id 参数。通过 Playwright 打开小红书登录页，
     截取二维码区域为 base64 图片。在 Redis 中创建扫码会话（TTL=5min）。
+    浏览器实例保持存活，供后续轮询复用同一 page 检测登录状态。
 
     Returns:
         {"session_id": str, "qr_image_base64": str}。
@@ -1025,17 +1029,26 @@ async def public_start_qr_login() -> dict[str, str]:
 
     pw_instance = await async_playwright().start()
     browser = await pw_instance.chromium.launch(headless=True)
-    page = await browser.new_page()
+    context = await browser.new_context(
+        user_agent=(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
+    )
+    page = await context.new_page()
 
     try:
-        await page.goto(XHS_LOGIN_URL, wait_until="networkidle")
+        await page.goto(XHS_LOGIN_URL, wait_until="domcontentloaded", timeout=15000)
+        await page.wait_for_timeout(3000)
 
-        # 截取二维码区域
-        qr_element = await page.query_selector(".qrcode-img, .login-qrcode img, canvas")
+        # 截取二维码区域（参照 e2e 脚本使用 .code-area 选择器）
+        qr_element = await page.query_selector(".code-area")
+        if not qr_element:
+            qr_element = await page.query_selector(".qrcode-img, .login-qrcode img, canvas")
         if qr_element:
             qr_bytes = await qr_element.screenshot()
         else:
-            # 回退：截取整个页面
             qr_bytes = await page.screenshot()
 
         qr_image_base64 = base64.b64encode(qr_bytes).decode()
@@ -1053,21 +1066,53 @@ async def public_start_qr_login() -> dict[str, str]:
             session_data,
         )
 
+        # 保持浏览器实例存活，供轮询复用
+        _active_pub_qr_sessions[session_id] = {
+            "pw": pw_instance,
+            "browser": browser,
+            "context": context,
+            "page": page,
+        }
+
         return {"session_id": session_id, "qr_image_base64": qr_image_base64}
 
     except Exception:
-        raise
-    finally:
+        # 启动失败时清理资源
         await page.close()
+        await context.close()
         await browser.close()
         await pw_instance.stop()
+        raise
+
+
+async def _cleanup_pub_qr_session(session_id: str) -> None:
+    """清理公开扫码 Playwright 会话资源。"""
+    session = _active_pub_qr_sessions.pop(session_id, None)
+    if session is None:
+        return
+    try:
+        await session["page"].close()
+    except Exception:
+        pass
+    try:
+        await session["context"].close()
+    except Exception:
+        pass
+    try:
+        await session["browser"].close()
+    except Exception:
+        pass
+    try:
+        await session["pw"].stop()
+    except Exception:
+        pass
 
 
 async def public_poll_qr_login_status(session_id: str) -> dict:
     """轮询公开扫码登录状态。
 
-    从 Redis 读取 pub_qr_session:{session_id}，检测登录是否成功。
-    登录成功时提取用户信息并签发 JWT。
+    复用 start 阶段保持的 Playwright page 检测登录状态变化。
+    登录成功时提取用户信息并签发 JWT，然后清理浏览器资源。
 
     Args:
         session_id: 扫码会话 ID。
@@ -1080,6 +1125,8 @@ async def public_poll_qr_login_status(session_id: str) -> dict:
     raw = await redis.get(session_key)
 
     if raw is None:
+        # Redis 会话过期，清理 Playwright 资源
+        await _cleanup_pub_qr_session(session_id)
         return {"status": "expired", "token": None, "user": None}
 
     session_data = json.loads(raw)
@@ -1092,42 +1139,56 @@ async def public_poll_qr_login_status(session_id: str) -> dict:
             "user": session_data.get("user"),
         }
 
-    # 状态为 waiting，通过 Playwright 检测登录状态
+    # 状态为 waiting，复用同一 page 检测登录状态
+    pw_session = _active_pub_qr_sessions.get(session_id)
+    if pw_session is None:
+        # Playwright 会话丢失（服务重启等），无法检测
+        return {"status": "waiting", "token": None, "user": None}
+
+    page = pw_session["page"]
     login_success = False
     user_info: dict | None = None
 
     try:
-        from playwright.async_api import async_playwright
+        # 参照 e2e 脚本的检测逻辑
+        # 检测方式 1: 登录弹窗消失
+        login_modal = await page.query_selector(".login-modal")
+        if not login_modal:
+            await page.wait_for_timeout(1000)
+            login_modal_recheck = await page.query_selector(".login-modal")
+            if not login_modal_recheck:
+                login_success = True
 
-        async with async_playwright() as pw:
-            browser = await pw.chromium.launch(headless=True)
-            try:
-                page = await browser.new_page()
-                await page.goto(XHS_LOGIN_URL, wait_until="networkidle")
+        # 检测方式 2: 用户头像出现
+        if not login_success:
+            avatar_el = await page.query_selector(".user-avatar, .reds-avatar")
+            if avatar_el:
+                login_success = True
 
-                # 检测登录成功标志：URL 变化或特定元素出现
-                current_url = page.url
-                if "login" not in current_url.lower() or await page.query_selector(
-                    ".user-avatar, .creator-home"
-                ):
-                    login_success = True
-                    # 提取用户信息
-                    nickname = await _safe_text(page, ".user-nickname") or "未知用户"
-                    avatar = await _safe_text(page, ".user-avatar img")
-                    # 尝试从 URL 或页面提取 xhs_user_id
-                    xhs_user_id = current_url.split("/")[-1] if "/" in current_url else str(uuid4())
-                    user_info = {
-                        "nickname": nickname,
-                        "avatar": avatar,
-                        "xhs_user_id": xhs_user_id,
-                    }
+        if login_success:
+            # 提取用户信息
+            cookies = await pw_session["context"].cookies()
+            # 从 cookie 中提取用户 ID
+            xhs_user_id = ""
+            for c in cookies:
+                if c["name"] == "customerClientId" or c["name"] == "customer-sso-sid":
+                    xhs_user_id = c["value"][:32]
+                    break
+            if not xhs_user_id:
+                xhs_user_id = str(uuid4())
 
-                await page.close()
-            finally:
-                await browser.close()
+            nickname = await _safe_text(page, ".user-name, .user-nickname") or "小红书用户"
+            avatar_src = None
+            avatar_el = await page.query_selector(".user-avatar img, .reds-avatar img")
+            if avatar_el:
+                avatar_src = await avatar_el.get_attribute("src")
 
-    except ImportError:
-        logger.warning("Playwright not available for public QR login polling")
+            user_info = {
+                "nickname": nickname,
+                "avatar": avatar_src,
+                "xhs_user_id": xhs_user_id,
+            }
+
     except Exception:
         logger.exception("Error during public QR login status check for session %s", session_id)
 
@@ -1146,6 +1207,9 @@ async def public_poll_qr_login_status(session_id: str) -> dict:
         remaining_ttl = await redis.ttl(session_key)
         if remaining_ttl > 0:
             await redis.setex(session_key, remaining_ttl, json.dumps(session_data))
+
+        # 登录成功，清理 Playwright 资源
+        await _cleanup_pub_qr_session(session_id)
 
         logger.info("Public QR login success for session %s", session_id)
         return {"status": "success", "token": token, "user": user_info}
