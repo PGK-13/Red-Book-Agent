@@ -132,7 +132,7 @@
   - 确保 Celery 任务 → Service 层调用正确
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 8. 编写属性测试和单元测试
+- [x] 8. 编写属性测试和单元测试
   - [ ]* 8.1 编写属性测试：OAuth 令牌加密存储
     - **Property 1: OAuth token encrypted storage**
     - **Validates: Requirements A1.3**
