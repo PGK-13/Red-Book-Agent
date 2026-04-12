@@ -189,3 +189,22 @@ async def client(db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     ) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def alembic_client(alembic_db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+    """FastAPI async test client backed by an Alembic-initialized schema."""
+
+    from app.db.session import get_db
+    from app.main import app
+
+    async def _override_get_db() -> AsyncGenerator[AsyncSession, None]:
+        yield alembic_db
+
+    app.dependency_overrides[get_db] = _override_get_db
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as c:
+        yield c
+    app.dependency_overrides.clear()

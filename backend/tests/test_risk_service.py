@@ -340,6 +340,47 @@ class TestSensitiveKeywordScan:
 
         assert hits == []
 
+    @pytest.mark.asyncio
+    async def test_scan_sensitive_keywords_logs_timing_metrics(
+        self,
+        db: AsyncSession,
+    ) -> None:
+        merchant_id = str(uuid4())
+        db.add(
+            RiskKeyword(
+                merchant_id=None,
+                keyword="forbidden",
+                category="platform_banned",
+                replacement="allowed",
+                match_mode="exact",
+                severity="block",
+                is_active=True,
+            )
+        )
+        await db.flush()
+
+        with patch(
+            "app.services.risk_service.perf_counter",
+            side_effect=[10.0, 10.123],
+        ), patch("app.services.risk_service.logger.info") as mocked_info:
+            hits = await risk_service.scan_sensitive_keywords(
+                "forbidden content",
+                merchant_id,
+                db,
+            )
+
+        assert hits
+        timing_calls = [
+            call
+            for call in mocked_info.call_args_list
+            if call.args and call.args[0] == "Risk timing metric=%s duration_ms=%.2f fields=%s"
+        ]
+        assert timing_calls
+        assert timing_calls[-1].args[1] == "scan_sensitive_keywords"
+        assert timing_calls[-1].args[2] == pytest.approx(123.0)
+        assert timing_calls[-1].args[3]["merchant_id"] == merchant_id
+        assert timing_calls[-1].args[3]["hit_count"] == 1
+
 
 class TestInboundRiskScan:
     @pytest.mark.asyncio
@@ -593,6 +634,48 @@ class TestOutboundRiskScan:
         assert result.decision == "passed"
         assert result.hits == []
         assert result.retryable is False
+
+    @pytest.mark.asyncio
+    async def test_scan_output_logs_timing_metrics(
+        self,
+        db: AsyncSession,
+    ) -> None:
+        merchant_id = str(uuid4())
+        account = Account(
+            id=str(uuid4()),
+            merchant_id=merchant_id,
+            xhs_user_id=f"xhs_{uuid4().hex[:8]}",
+            nickname="timed-output",
+            access_type="browser",
+            status="active",
+        )
+        db.add(account)
+        await db.flush()
+
+        with patch(
+            "app.services.risk_service.perf_counter",
+            side_effect=[20.0, 20.050, 20.100, 20.250],
+        ), patch("app.services.risk_service.logger.info") as mocked_info:
+            result = await risk_service.scan_output(
+                merchant_id=merchant_id,
+                account_id=account.id,
+                scene="note_publish",
+                content="clean outbound content",
+                db=db,
+            )
+
+        assert result.decision == "passed"
+        timing_calls = [
+            call
+            for call in mocked_info.call_args_list
+            if call.args and call.args[0] == "Risk timing metric=%s duration_ms=%.2f fields=%s"
+        ]
+        assert timing_calls
+        assert timing_calls[-1].args[1] == "scan_output"
+        assert timing_calls[-1].args[2] == pytest.approx(250.0)
+        assert timing_calls[-1].args[3]["merchant_id"] == merchant_id
+        assert timing_calls[-1].args[3]["account_id"] == account.id
+        assert timing_calls[-1].args[3]["decision"] == "passed"
 
     @pytest.mark.asyncio
     async def test_scan_output_short_circuits_on_rest_window_decision(

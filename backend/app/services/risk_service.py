@@ -13,6 +13,7 @@ import re
 from hashlib import sha256
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
+from time import perf_counter
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, case, or_, select
@@ -46,6 +47,15 @@ OUTBOUND_SCAN_ORDER = (
     "competitor_keywords",
     "reply_similarity",
 )
+
+
+def _log_risk_timing(metric: str, duration_ms: float, **fields: object) -> None:
+    logger.info(
+        "Risk timing metric=%s duration_ms=%.2f fields=%s",
+        metric,
+        duration_ms,
+        fields,
+    )
 
 
 async def log_risk_event(
@@ -308,8 +318,16 @@ async def scan_sensitive_keywords(
 ) -> list[RiskHitResponse]:
     """Scan active system and merchant keywords and return hit details."""
 
+    started_at = perf_counter()
     normalized_content = content.strip()
     if not normalized_content:
+        _log_risk_timing(
+            "scan_sensitive_keywords",
+            (perf_counter() - started_at) * 1000,
+            merchant_id=merchant_id,
+            content_length=len(content),
+            hit_count=0,
+        )
         return []
 
     keywords = await _load_active_scan_keywords(merchant_id=merchant_id, db=db)
@@ -334,6 +352,13 @@ async def scan_sensitive_keywords(
             )
 
     hits.sort(key=lambda item: (item.start, item.end, item.keyword))
+    _log_risk_timing(
+        "scan_sensitive_keywords",
+        (perf_counter() - started_at) * 1000,
+        merchant_id=merchant_id,
+        content_length=len(normalized_content),
+        hit_count=len(hits),
+    )
     return hits
 
 
@@ -552,6 +577,8 @@ async def scan_output(
 ) -> RiskScanResponse:
     """Run the unified outbound risk scan and return a single decision object."""
 
+    started_at = perf_counter()
+    decision_name = "unknown"
     if scene not in {"note_publish", "comment_reply", "dm_send"}:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -573,6 +600,7 @@ async def scan_output(
     )
     if stage_result is not None:
         decision, log_context = stage_result
+        decision_name = decision.decision
         await _log_scan_output_decision(
             merchant_id=merchant_id,
             account_id=account_id,
@@ -580,6 +608,15 @@ async def scan_output(
             decision=decision,
             db=db,
             **log_context,
+        )
+        _log_risk_timing(
+            "scan_output",
+            (perf_counter() - started_at) * 1000,
+            merchant_id=merchant_id,
+            account_id=account_id,
+            scene=scene,
+            decision=decision_name,
+            content_length=len(content.strip()),
         )
         return _to_public_scan_response(decision)
 
@@ -592,6 +629,16 @@ async def scan_output(
         violations=[],
         context={"reason": "passed", "stage_order": list(OUTBOUND_SCAN_ORDER)},
         db=db,
+    )
+    decision_name = "passed"
+    _log_risk_timing(
+        "scan_output",
+        (perf_counter() - started_at) * 1000,
+        merchant_id=merchant_id,
+        account_id=account_id,
+        scene=scene,
+        decision=decision_name,
+        content_length=len(content.strip()),
     )
     return _to_public_scan_response(
         RiskScanResponse(

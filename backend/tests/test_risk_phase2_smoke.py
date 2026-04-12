@@ -19,6 +19,9 @@ from app.models.risk import ReplyHistory, RiskKeyword
 from app.services import content_service, interaction_service
 
 
+pytestmark = [pytest.mark.requires_db, pytest.mark.alembic_only]
+
+
 def _make_auth_header(merchant_id: str) -> dict[str, str]:
     token = jwt.encode(
         {"sub": merchant_id},
@@ -87,8 +90,8 @@ class _FakeRedis:
 
 @pytest.mark.asyncio
 async def test_phase2_content_smoke_rewrite_rescan_and_event_contract(
-    db: AsyncSession,
-    client: AsyncClient,
+    alembic_db: AsyncSession,
+    alembic_client: AsyncClient,
 ) -> None:
     merchant_id = str(uuid4())
     account = Account(
@@ -108,8 +111,8 @@ async def test_phase2_content_smoke_rewrite_rescan_and_event_contract(
         risk_status="pending",
         status="draft",
     )
-    db.add_all([account, draft])
-    db.add(
+    alembic_db.add_all([account, draft])
+    alembic_db.add(
         RiskKeyword(
             merchant_id=merchant_id,
             keyword="promo",
@@ -120,16 +123,16 @@ async def test_phase2_content_smoke_rewrite_rescan_and_event_contract(
             is_active=True,
         )
     )
-    await db.flush()
+    await alembic_db.flush()
 
     fake_redis = _FakeRedis()
     with patch("app.services.risk_service.get_redis", return_value=fake_redis):
         result = await content_service.review_draft_outbound_risk(
             merchant_id=merchant_id,
             draft_id=draft.id,
-            db=db,
+            db=alembic_db,
         )
-        await db.commit()
+        await alembic_db.commit()
 
     assert result.decision.decision == "passed"
     assert result.attempts_used == 1
@@ -137,7 +140,7 @@ async def test_phase2_content_smoke_rewrite_rescan_and_event_contract(
     assert "intro" in draft.title
 
     logs = (
-        await db.execute(
+        await alembic_db.execute(
             select(OperationLog)
             .where(OperationLog.account_id == account.id)
             .order_by(OperationLog.created_at.asc())
@@ -149,7 +152,7 @@ async def test_phase2_content_smoke_rewrite_rescan_and_event_contract(
     assert logs[0].detail["context"]["reason"] == "sensitive_keywords"
     assert logs[1].detail["risk_decision"] == "passed"
 
-    resp = await client.get(
+    resp = await alembic_client.get(
         f"/api/v1/risk/accounts/{account.id}/events?operation_type=note_publish",
         headers=_make_auth_header(merchant_id),
     )
@@ -162,7 +165,7 @@ async def test_phase2_content_smoke_rewrite_rescan_and_event_contract(
 
 @pytest.mark.asyncio
 async def test_phase2_interaction_smoke_blocked_and_passed_paths(
-    db: AsyncSession,
+    alembic_db: AsyncSession,
 ) -> None:
     merchant_id = str(uuid4())
     account = Account(
@@ -173,8 +176,8 @@ async def test_phase2_interaction_smoke_blocked_and_passed_paths(
         access_type="browser",
         status="active",
     )
-    db.add(account)
-    db.add(
+    alembic_db.add(account)
+    alembic_db.add(
         RiskKeyword(
             merchant_id=None,
             keyword="forbidden",
@@ -185,7 +188,7 @@ async def test_phase2_interaction_smoke_blocked_and_passed_paths(
             is_active=True,
         )
     )
-    await db.flush()
+    await alembic_db.flush()
 
     fake_redis = _FakeRedis()
     with patch("app.services.risk_service.get_redis", return_value=fake_redis), patch(
@@ -197,16 +200,16 @@ async def test_phase2_interaction_smoke_blocked_and_passed_paths(
             account_id=account.id,
             content="forbidden outbound text",
             source_record_id=str(uuid4()),
-            db=db,
+            db=alembic_db,
         )
         passed = await interaction_service.send_comment_reply(
             merchant_id=merchant_id,
             account_id=account.id,
             content="thanks for reaching out",
             source_record_id=str(uuid4()),
-            db=db,
+            db=alembic_db,
         )
-        await db.commit()
+        await alembic_db.commit()
 
     assert blocked.decision.decision == "blocked"
     assert blocked.delivered is False
@@ -218,12 +221,12 @@ async def test_phase2_interaction_smoke_blocked_and_passed_paths(
     assert isinstance(passed.reply_history, ReplyHistory)
 
     histories = (
-        await db.execute(select(ReplyHistory).where(ReplyHistory.account_id == account.id))
+        await alembic_db.execute(select(ReplyHistory).where(ReplyHistory.account_id == account.id))
     ).scalars().all()
     assert len(histories) == 1
 
     logs = (
-        await db.execute(
+        await alembic_db.execute(
             select(OperationLog)
             .where(OperationLog.account_id == account.id)
             .order_by(OperationLog.created_at.asc())

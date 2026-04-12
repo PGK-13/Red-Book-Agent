@@ -159,6 +159,50 @@ services:
     command: ["python", "scripts/verify_risk_bootstrap.py"]
     restart: "no"
 
+  risk-phase2-smoke-check:
+    build:
+      context: ..
+      dockerfile: infra/docker/backend.Dockerfile
+    profiles: ["verify"]
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      APP_DEBUG: ${APP_DEBUG:-true}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://xhs:xhs_dev_password@postgres:5432/xhs_marketing}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://xhs:xhs_dev_password@rabbitmq:5672/}
+      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    command: ["python", "scripts/verify_risk_phase2_smoke.py"]
+    restart: "no"
+
+  risk-performance-benchmark:
+    build:
+      context: ..
+      dockerfile: infra/docker/backend.Dockerfile
+    profiles: ["verify"]
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      APP_DEBUG: ${APP_DEBUG:-true}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://xhs:xhs_dev_password@postgres:5432/xhs_marketing}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://xhs:xhs_dev_password@rabbitmq:5672/}
+      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    command: ["python", "scripts/benchmark_risk_performance.py"]
+    restart: "no"
+
 volumes:
   postgres_data:
   redis_data:

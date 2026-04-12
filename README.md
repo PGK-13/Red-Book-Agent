@@ -54,6 +54,34 @@ docker compose -f infra/docker-compose.yml --profile verify run --rm risk-bootst
 
 更详细的操作说明见 [docs/phase1-empty-db-acceptance.md](docs/phase1-empty-db-acceptance.md)。
 
+### Phase 2 Smoke 验收
+
+模块 E 的 Phase 2 最小闭环也已补充为可执行 smoke 验收：
+
+```bash
+docker compose -f infra/docker-compose.yml up --build -d
+docker compose -f infra/docker-compose.yml --profile verify run --rm risk-phase2-smoke-check
+```
+
+该验收会覆盖：
+
+- 内容侧 `rewrite -> rescan`
+- 互动侧 `blocked -> passed -> persist_reply_history`
+- `operation_logs` 与 `reply_histories` 的关键落库
+
+详细说明见 [docs/phase2-smoke-acceptance.md](docs/phase2-smoke-acceptance.md)。
+
+### 风控性能基线
+
+模块 E 现已提供容器环境下的性能基线脚本，用于测量 `scan_sensitive_keywords` 与 `scan_output` 的 `P50 / P95`：
+
+```bash
+docker compose -f infra/docker-compose.yml up --build -d
+docker compose -f infra/docker-compose.yml --profile verify run --rm risk-performance-benchmark
+```
+
+脚本会输出 JSON 结果，详细说明见 [docs/module-e-risk-performance-baseline.md](docs/module-e-risk-performance-baseline.md)。
+
 ### 本地后端开发
 
 ```bash
