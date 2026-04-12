@@ -110,7 +110,9 @@ class TestInteractionRiskIntegration:
             new=AsyncMock(return_value=passed),
         ) as mocked_scan, patch(
             "app.services.interaction_service._dispatch_outbound_interaction",
-            new=AsyncMock(return_value=True),
+            new=AsyncMock(
+                return_value=interaction_service.InteractionDispatchResult(delivered=True)
+            ),
         ) as mocked_dispatch:
             result = await interaction_service.send_comment_reply(
                 merchant_id=merchant_id,
@@ -148,7 +150,9 @@ class TestInteractionRiskIntegration:
             new=AsyncMock(return_value=blocked),
         ) as mocked_scan, patch(
             "app.services.interaction_service._dispatch_outbound_interaction",
-            new=AsyncMock(return_value=True),
+            new=AsyncMock(
+                return_value=interaction_service.InteractionDispatchResult(delivered=True)
+            ),
         ) as mocked_dispatch, patch(
             "app.services.interaction_service.risk_service.persist_reply_history",
             new=AsyncMock(),
@@ -187,11 +191,19 @@ class TestInteractionRiskIntegration:
             new=AsyncMock(return_value=passed),
         ) as mocked_scan, patch(
             "app.services.interaction_service._dispatch_outbound_interaction",
-            new=AsyncMock(return_value=False),
+            new=AsyncMock(
+                return_value=interaction_service.InteractionDispatchResult(
+                    delivered=False,
+                    failure_reason="network_timeout",
+                )
+            ),
         ) as mocked_dispatch, patch(
             "app.services.interaction_service.risk_service.persist_reply_history",
             new=AsyncMock(),
-        ) as mocked_history:
+        ) as mocked_history, patch(
+            "app.services.interaction_service.risk_service.emit_alert_if_needed",
+            new=AsyncMock(),
+        ) as mocked_alert:
             result = await interaction_service.send_dm(
                 merchant_id=merchant_id,
                 account_id=account_id,
@@ -203,9 +215,11 @@ class TestInteractionRiskIntegration:
         assert result.decision.decision == "passed"
         assert result.delivered is False
         assert result.reply_history is None
+        assert result.failure_reason == "network_timeout"
         mocked_scan.assert_awaited_once()
         mocked_dispatch.assert_awaited_once()
         mocked_history.assert_not_awaited()
+        mocked_alert.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_real_inbound_then_outbound_reply_flow_persists_history(
@@ -239,7 +253,9 @@ class TestInteractionRiskIntegration:
 
         with patch(
             "app.services.interaction_service._dispatch_outbound_interaction",
-            new=AsyncMock(return_value=True),
+            new=AsyncMock(
+                return_value=interaction_service.InteractionDispatchResult(delivered=True)
+            ),
         ), patch(
             "app.services.risk_service.send_alert",
             new=AsyncMock(),

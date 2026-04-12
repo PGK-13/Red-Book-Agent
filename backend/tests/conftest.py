@@ -93,6 +93,7 @@ async def _setup_db(request: pytest.FixtureRequest):
 
     engine = _make_engine()
     try:
+        await _reset_public_schema(engine)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         async with engine.connect() as conn:

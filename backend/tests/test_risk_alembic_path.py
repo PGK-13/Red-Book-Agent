@@ -49,10 +49,24 @@ async def test_risk_tables_created_via_alembic_match_runtime_writes(
         ).all()
     }
 
-    assert {"account_id", "operation_type", "status", "detail", "error_code"} <= operation_log_columns
+    assert {
+        "merchant_id",
+        "account_id",
+        "module",
+        "operation_type",
+        "status",
+        "detail",
+        "error_code",
+    } <= operation_log_columns
     assert "content_snapshot" not in operation_log_columns
-    assert {"merchant_id", "alert_type", "module", "severity", "is_resolved"} <= alert_columns
-    assert "account_id" not in alert_columns
+    assert {
+        "merchant_id",
+        "account_id",
+        "alert_type",
+        "module",
+        "severity",
+        "is_resolved",
+    } <= alert_columns
 
     merchant_id = str(uuid4())
     account = Account(

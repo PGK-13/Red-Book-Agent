@@ -8,7 +8,6 @@ from fastapi import HTTPException, status
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.notifications import send_alert
 from app.models.account import Account
 from app.models.content import ContentDraft
 from app.schemas.risk import RiskScanResponse
@@ -28,6 +27,27 @@ class DraftRiskReviewResult:
 
 @dataclass(frozen=True, slots=True)
 class _DraftContentSnapshot:
+    title: str
+    body: str
+    alt_titles: tuple[str, ...]
+    hashtags: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class DraftRewriteRequest:
+    merchant_id: str
+    account_id: str
+    draft_id: str
+    attempt: int
+    decision: RiskScanResponse
+    title: str
+    body: str
+    alt_titles: tuple[str, ...]
+    hashtags: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class DraftRewriteResult:
     title: str
     body: str
     alt_titles: tuple[str, ...]
@@ -58,7 +78,12 @@ async def review_draft_outbound_risk(
         and attempts_used < max_rewrite_attempts
     ):
         attempts_used += 1
-        _rewrite_draft_locally(draft, current_decision)
+        _rewrite_draft_locally(
+            merchant_id=merchant_id,
+            draft=draft,
+            decision=current_decision,
+            attempt=attempts_used,
+        )
         current_decision = await _scan_draft_outbound(
             merchant_id=merchant_id,
             draft=draft,
@@ -82,13 +107,15 @@ async def review_draft_outbound_risk(
         should_emit_manual_review_alert = True
 
     if should_emit_manual_review_alert:
-        await send_alert(
+        await risk_service.emit_alert_if_needed(
             merchant_id=merchant_id,
+            account_id=draft.account_id,
             alert_type="risk_rewrite_failed",
             message=(
                 f"Draft {draft.id} for account {draft.account_id} exhausted risk rewrite "
                 "retries and was moved to manual review"
             ),
+            db=db,
             severity="warning",
         )
 
@@ -148,8 +175,13 @@ def _compose_draft_scan_content(draft: ContentDraft) -> str:
     return "\n".join(part for part in parts if part)
 
 
-def _rewrite_draft_locally(draft: ContentDraft, decision: RiskScanResponse) -> None:
-    """Temporary local rewrite fallback until the content agent owns this step."""
+def _rewrite_draft_locally(
+    merchant_id: str,
+    draft: ContentDraft,
+    decision: RiskScanResponse,
+    attempt: int,
+) -> None:
+    """Apply the minimum rewrite contract before rescanning the draft."""
 
     rewritten_title = draft.title
     rewritten_body = draft.body
@@ -183,22 +215,24 @@ def _rewrite_draft_locally(draft: ContentDraft, decision: RiskScanResponse) -> N
             rewritten_title = rewritten_title.strip()
             rewritten_body = rewritten_body.strip()
 
-    if decision.similarity_score is not None:
-        rewritten_title, rewritten_body, rewritten_alt_titles, rewritten_hashtags = (
-            _request_content_agent_rewrite(
-                draft=draft,
-                rewritten_title=rewritten_title,
-                rewritten_body=rewritten_body,
-                rewritten_alt_titles=rewritten_alt_titles,
-                rewritten_hashtags=rewritten_hashtags,
-                decision=decision,
-            )
+    rewrite_result = _request_content_agent_rewrite(
+        DraftRewriteRequest(
+            merchant_id=merchant_id,
+            account_id=draft.account_id,
+            draft_id=draft.id,
+            attempt=attempt,
+            decision=decision,
+            title=rewritten_title,
+            body=rewritten_body,
+            alt_titles=tuple(rewritten_alt_titles),
+            hashtags=tuple(rewritten_hashtags),
         )
+    )
 
-    draft.title = rewritten_title.strip() or draft.title
-    draft.body = rewritten_body.strip() or draft.body
-    draft.alt_titles = [title for title in rewritten_alt_titles if title.strip()]
-    draft.hashtags = [tag for tag in rewritten_hashtags if tag.strip()]
+    draft.title = rewrite_result.title.strip() or draft.title
+    draft.body = rewrite_result.body.strip() or draft.body
+    draft.alt_titles = [title for title in rewrite_result.alt_titles if title.strip()]
+    draft.hashtags = [tag for tag in rewrite_result.hashtags if tag.strip()]
 
 
 def _snapshot_draft_content(draft: ContentDraft) -> _DraftContentSnapshot:
@@ -217,17 +251,25 @@ def _restore_draft_content(draft: ContentDraft, snapshot: _DraftContentSnapshot)
     draft.hashtags = list(snapshot.hashtags)
 
 
-def _request_content_agent_rewrite(
-    draft: ContentDraft,
-    rewritten_title: str,
-    rewritten_body: str,
-    rewritten_alt_titles: list[str],
-    rewritten_hashtags: list[str],
-    decision: RiskScanResponse,
-) -> tuple[str, str, list[str], list[str]]:
-    # TODO: Replace this placeholder with a real content-agent rewrite call once
-    # module C exposes a dedicated paragraph/title rewrite capability.
-    return rewritten_title, rewritten_body, rewritten_alt_titles, rewritten_hashtags
+def _request_content_agent_rewrite(request: DraftRewriteRequest) -> DraftRewriteResult:
+    """Execute the local fallback rewrite contract for module C integration."""
+
+    rewritten_title = request.title
+    rewritten_body = request.body
+    rewritten_alt_titles = list(request.alt_titles)
+    rewritten_hashtags = list(request.hashtags)
+
+    if request.decision.similarity_score is not None:
+        rewritten_title = risk_service.inject_variants(rewritten_title)
+        rewritten_body = risk_service.inject_variants(rewritten_body)
+        rewritten_alt_titles = [risk_service.inject_variants(title) for title in rewritten_alt_titles]
+
+    return DraftRewriteResult(
+        title=rewritten_title,
+        body=rewritten_body,
+        alt_titles=tuple(rewritten_alt_titles),
+        hashtags=tuple(rewritten_hashtags),
+    )
 
 
 def _remove_keyword_occurrence(content: str, keyword: str) -> str:

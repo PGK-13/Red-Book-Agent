@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -25,6 +25,8 @@ RiskScene = Literal[
     "dm_inbound",
 ]
 RiskDecision = Literal["passed", "rewrite_required", "blocked", "manual_review"]
+RiskModule = Literal["E"]
+RiskDetailSchema = Literal["module_e_risk_event.v1"]
 
 
 class RiskKeywordCreateRequest(BaseModel):
@@ -160,10 +162,15 @@ class RiskEventResponse(BaseModel):
     """Risk event log item."""
 
     id: UUID
+    merchant_id: UUID
+    account_id: UUID
+    module: RiskModule
     operation_type: str
     status: str
     risk_decision: RiskDecision
     violations: list[str] = Field(default_factory=list)
+    detail_schema: RiskDetailSchema
+    context: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
 
 

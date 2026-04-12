@@ -797,6 +797,7 @@ class TestQuotaReservation:
         db.add(account)
         db.add(
             AccountRiskConfig(
+                merchant_id=merchant_id,
                 account_id=account.id,
                 comment_reply_limit_per_hour=2,
                 dm_send_limit_per_hour=9,
@@ -834,6 +835,7 @@ class TestQuotaReservation:
         db.add(account)
         db.add(
             AccountRiskConfig(
+                merchant_id=merchant_id,
                 account_id=account.id,
                 comment_reply_limit_per_hour=1,
                 dm_send_limit_per_hour=50,
@@ -999,6 +1001,7 @@ class TestRestWindowSchedule:
         db.add(account)
         db.add(
             AccountRiskConfig(
+                merchant_id=merchant_id,
                 account_id=account.id,
                 rest_windows=["23:00-02:00"],
             )
@@ -1148,6 +1151,7 @@ class TestSimilarityDetection:
         db.add(account)
         db.add(
             AccountRiskConfig(
+                merchant_id=merchant_id,
                 account_id=account.id,
                 dedup_similarity_threshold=0.99,
             )
@@ -1472,6 +1476,7 @@ class TestCompetitorDetection:
         db.add(account)
         db.add(
             AccountRiskConfig(
+                merchant_id=merchant_id,
                 account_id=account.id,
                 competitor_alert_threshold_per_hour=10,
             )

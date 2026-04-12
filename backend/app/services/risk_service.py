@@ -35,6 +35,8 @@ from app.schemas.risk import (
 
 logger = logging.getLogger(__name__)
 
+RISK_MODULE = "E"
+RISK_EVENT_DETAIL_SCHEMA = "module_e_risk_event.v1"
 REPLY_HISTORY_CACHE_SIZE = 100
 REPLY_HISTORY_CACHE_TTL_SECONDS = 86400
 OUTBOUND_SCAN_ORDER = (
@@ -47,29 +49,32 @@ OUTBOUND_SCAN_ORDER = (
 
 
 async def log_risk_event(
+    merchant_id: str,
     account_id: str,
     operation_type: str,
     status: str,
     risk_decision: str,
     violations: list[str],
     db: AsyncSession,
-    detail: dict | None = None,
+    context: dict | None = None,
     error_code: str | None = None,
 ) -> OperationLog:
     """Persist a risk control operation log entry."""
 
-    payload = {
-        "risk_decision": risk_decision,
-        "violations": violations,
-    }
-    if detail:
-        payload.update(detail)
-
     event = OperationLog(
+        merchant_id=merchant_id,
         account_id=account_id,
+        module=RISK_MODULE,
         operation_type=operation_type,
         status=status,
-        detail=payload,
+        detail=_build_risk_event_detail(
+            merchant_id=merchant_id,
+            account_id=account_id,
+            operation_type=operation_type,
+            risk_decision=risk_decision,
+            violations=violations,
+            context=context,
+        ),
         error_code=error_code,
     )
     db.add(event)
@@ -82,12 +87,14 @@ async def emit_alert_if_needed(
     alert_type: str,
     message: str,
     db: AsyncSession,
+    account_id: str | None = None,
     severity: str = "warning",
 ) -> Alert:
     """Persist an alert record and dispatch the notification hook."""
 
     alert = await _create_alert_record(
         merchant_id=merchant_id,
+        account_id=account_id,
         alert_type=alert_type,
         message=message,
         severity=severity,
@@ -104,6 +111,7 @@ async def emit_alert_if_needed(
 
 async def _create_alert_record(
     merchant_id: str,
+    account_id: str | None,
     alert_type: str,
     message: str,
     severity: str,
@@ -111,14 +119,38 @@ async def _create_alert_record(
 ) -> Alert:
     alert = Alert(
         merchant_id=merchant_id,
+        account_id=account_id,
         alert_type=alert_type,
-        module="E",
+        module=RISK_MODULE,
         severity=severity,
         message=message,
     )
     db.add(alert)
     await db.flush()
     return alert
+
+
+def _build_risk_event_detail(
+    merchant_id: str,
+    account_id: str,
+    operation_type: str,
+    risk_decision: str,
+    violations: list[str],
+    context: dict | None = None,
+) -> dict:
+    payload = {
+        "detail_schema": RISK_EVENT_DETAIL_SCHEMA,
+        "module": RISK_MODULE,
+        "merchant_id": merchant_id,
+        "account_id": account_id,
+        "operation_type": operation_type,
+        "risk_decision": risk_decision,
+        "violations": violations,
+        "context": context or {},
+    }
+    if context:
+        payload.update(context)
+    return payload
 
 
 async def list_keywords(
@@ -465,29 +497,25 @@ async def scan_input(
             [hit.keyword for hit in hits],
         )
         await log_risk_event(
+            merchant_id=merchant_id,
             account_id=account_id,
             operation_type=scene,
             status="success",
             risk_decision="passed",
             violations=_extract_hit_keywords(hits),
-            detail={"observed_only": True, "categories": categories},
+            context={"observed_only": True, "categories": categories},
             db=db,
         )
-        await send_alert(
+        await emit_alert_if_needed(
             merchant_id=merchant_id,
+            account_id=account_id,
             alert_type="inbound_risk_hit",
             message=(
                 f"账号 {account_id} 在 {scene} 场景检测到入站风险内容，"
                 f"命中 {len(hits)} 个关键词"
             ),
-            severity="warning",
-        )
-        await _create_alert_record(
-            merchant_id=merchant_id,
-            alert_type="inbound_risk_hit",
-            message=f"Account {account_id} detected inbound risk content in {scene}",
-            severity="warning",
             db=db,
+            severity="warning",
         )
     else:
         logger.info(
@@ -497,12 +525,13 @@ async def scan_input(
             scene,
         )
         await log_risk_event(
+            merchant_id=merchant_id,
             account_id=account_id,
             operation_type=scene,
             status="success",
             risk_decision="passed",
             violations=[],
-            detail={"observed_only": True},
+            context={"observed_only": True},
             db=db,
         )
 
@@ -545,6 +574,7 @@ async def scan_output(
     if stage_result is not None:
         decision, log_context = stage_result
         await _log_scan_output_decision(
+            merchant_id=merchant_id,
             account_id=account_id,
             scene=scene,
             decision=decision,
@@ -554,12 +584,13 @@ async def scan_output(
         return _to_public_scan_response(decision)
 
     await log_risk_event(
+        merchant_id=merchant_id,
         account_id=account_id,
         operation_type=scene,
         status="success",
         risk_decision="passed",
         violations=[],
-        detail={"reason": "passed"},
+        context={"reason": "passed", "stage_order": list(OUTBOUND_SCAN_ORDER)},
         db=db,
     )
     return _to_public_scan_response(
@@ -583,6 +614,7 @@ async def _run_scan_output_stages(
     if rest_decision is not None:
         await emit_alert_if_needed(
             merchant_id=merchant_id,
+            account_id=account_id,
             alert_type="rest_window_violation",
             message=(
                 f"Account {account_id} attempted {scene} during a configured rest window "
@@ -659,6 +691,7 @@ async def _run_scan_output_stages(
 
 
 async def _log_scan_output_decision(
+    merchant_id: str,
     account_id: str,
     scene: str,
     decision: RiskScanResponse,
@@ -669,12 +702,13 @@ async def _log_scan_output_decision(
     db: AsyncSession,
 ) -> None:
     await log_risk_event(
+        merchant_id=merchant_id,
         account_id=account_id,
         operation_type=scene,
         status=status,
         risk_decision=decision.decision,
         violations=violations,
-        detail=detail,
+        context=detail,
         error_code=error_code,
         db=db,
     )
@@ -706,6 +740,7 @@ async def update_account_schedule(
 
     if config is None:
         config = AccountRiskConfig(
+            merchant_id=merchant_id,
             account_id=account_id,
             rest_windows=data.rest_windows,
         )
@@ -776,6 +811,7 @@ async def list_account_events(
     merchant_id: str,
     account_id: str,
     db: AsyncSession,
+    operation_type: str | None = None,
     limit: int = 50,
 ) -> list[RiskEventResponse]:
     """Return recent operation log events for one account."""
@@ -788,27 +824,37 @@ async def list_account_events(
 
     stmt = (
         select(OperationLog)
-        .where(OperationLog.account_id == account_id)
+        .where(
+            OperationLog.merchant_id == merchant_id,
+            OperationLog.account_id == account_id,
+        )
         .order_by(OperationLog.created_at.desc())
         .limit(limit)
     )
+    if operation_type is not None:
+        stmt = stmt.where(OperationLog.operation_type == operation_type)
     result = await db.execute(stmt)
     events = list(result.scalars().all())
 
-    responses: list[RiskEventResponse] = []
-    for event in events:
-        detail = event.detail or {}
-        responses.append(
-            RiskEventResponse(
-                id=event.id,
-                operation_type=event.operation_type,
-                status=event.status,
-                risk_decision=detail.get("risk_decision", "passed"),
-                violations=list(detail.get("violations", [])),
-                created_at=event.created_at,
-            )
-        )
-    return responses
+    return [_to_risk_event_response(event) for event in events]
+
+
+def _to_risk_event_response(event: OperationLog) -> RiskEventResponse:
+    detail = event.detail or {}
+    context = detail.get("context") or {}
+    return RiskEventResponse(
+        id=event.id,
+        merchant_id=event.merchant_id,
+        account_id=event.account_id,
+        module=event.module,
+        operation_type=event.operation_type,
+        status=event.status,
+        risk_decision=detail.get("risk_decision", "passed"),
+        violations=list(detail.get("violations", [])),
+        detail_schema=detail.get("detail_schema", RISK_EVENT_DETAIL_SCHEMA),
+        context=dict(context),
+        created_at=event.created_at,
+    )
 
 
 async def is_in_rest_window(
@@ -1078,6 +1124,7 @@ async def _track_competitor_hits(
     if total > threshold:
         await emit_alert_if_needed(
             merchant_id=merchant_id,
+            account_id=account_id,
             alert_type="competitor_hits_abnormal",
             message=(
                 f"账号 {account_id} 1 小时内竞品命中次数异常升高，"
@@ -1125,6 +1172,7 @@ async def check_and_reserve_quota(
 
     await emit_alert_if_needed(
         merchant_id=quota_rule["merchant_id"],
+        account_id=account_id,
         alert_type="risk_quota_exceeded",
         message=(
             f"账号 {account_id} 的 {action} 频率已超过阈值 "

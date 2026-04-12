@@ -153,10 +153,15 @@ class TestRiskAPI:
                 return_value=[
                     {
                         "id": str(uuid4()),
+                        "merchant_id": merchant_id,
+                        "account_id": account.id,
+                        "module": "E",
                         "operation_type": "comment_reply",
                         "status": "failed",
                         "risk_decision": "blocked",
                         "violations": ["promo"],
+                        "detail_schema": "module_e_risk_event.v1",
+                        "context": {"reason": "sensitive_keywords"},
                         "created_at": datetime.now(timezone.utc),
                     }
                 ]
@@ -172,3 +177,4 @@ class TestRiskAPI:
         assert body["code"] == 0
         assert isinstance(body["data"], list)
         assert body["data"][0]["risk_decision"] == "blocked"
+        assert body["data"][0]["module"] == "E"

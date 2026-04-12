@@ -159,6 +159,7 @@ async def list_account_events(
     account_id: UUID,
     merchant_id: CurrentMerchantId,
     db: DbSession,
+    operation_type: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> BaseResponse[list[RiskEventResponse]]:
     """List recent risk events for one account."""
@@ -167,6 +168,7 @@ async def list_account_events(
         merchant_id=merchant_id,
         account_id=str(account_id),
         db=db,
+        operation_type=operation_type,
         limit=limit,
     )
     return BaseResponse(data=events)

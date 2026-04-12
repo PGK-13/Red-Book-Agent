@@ -183,7 +183,7 @@ class TestContentDraftOutboundRisk:
                 ]
             ),
         ) as mocked_scan, patch(
-            "app.services.content_service.send_alert",
+            "app.services.content_service.risk_service.emit_alert_if_needed",
             new=AsyncMock(),
         ) as mocked_alert:
             result = await content_service.review_draft_outbound_risk(
