@@ -221,7 +221,7 @@ class ReplyHistory(Base):
 
 
 class OperationLog(Base):
-    """Audit trail for outbound and inbound risk-related operations."""
+    """Audit trail for outbound and inbound risk operations."""
 
     __tablename__ = "operation_logs"
 
