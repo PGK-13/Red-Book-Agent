@@ -40,6 +40,27 @@ def upgrade() -> None:
         "dm_send",
         name="reply_history_source_type_enum",
     )
+    operation_type_enum = sa.Enum(
+        "note_publish",
+        "comment_reply",
+        "dm_send",
+        "comment_inbound",
+        "dm_inbound",
+        name="operation_type_enum",
+    )
+    operation_status_enum = sa.Enum(
+        "success",
+        "blocked",
+        "rewrite_required",
+        "manual_review",
+        name="operation_status_enum",
+    )
+    alert_severity_enum = sa.Enum(
+        "info",
+        "warning",
+        "critical",
+        name="alert_severity_enum",
+    )
 
     op.create_table(
         "risk_keywords",
@@ -89,6 +110,7 @@ def upgrade() -> None:
     op.create_table(
         "account_risk_configs",
         sa.Column("id", UUID(as_uuid=False), primary_key=True),
+        sa.Column("merchant_id", UUID(as_uuid=False), nullable=False),
         sa.Column(
             "account_id",
             UUID(as_uuid=False),
@@ -134,6 +156,11 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
+    op.create_index(
+        "ix_account_risk_configs_merchant_id",
+        "account_risk_configs",
+        ["merchant_id"],
+    )
 
     op.create_table(
         "reply_histories",
@@ -169,11 +196,77 @@ def upgrade() -> None:
     op.create_index(
         "ix_reply_histories_account_created_at",
         "reply_histories",
-        ["account_id", "created_at"],
+        ["account_id", sa.text("created_at DESC")],
+    )
+
+    op.create_table(
+        "operation_logs",
+        sa.Column("id", UUID(as_uuid=False), primary_key=True),
+        sa.Column("merchant_id", UUID(as_uuid=False), nullable=False),
+        sa.Column(
+            "account_id",
+            UUID(as_uuid=False),
+            sa.ForeignKey("accounts.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("operation_type", operation_type_enum, nullable=False),
+        sa.Column("status", operation_status_enum, nullable=False),
+        sa.Column("content_snapshot", sa.Text, nullable=True),
+        sa.Column("risk_reason", sa.Text, nullable=True),
+        sa.Column("source_record_id", UUID(as_uuid=False), nullable=True),
+        sa.Column(
+            "created_at",
+            TIMESTAMP(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+    )
+    op.create_index(
+        "ix_operation_logs_account_type_created_at",
+        "operation_logs",
+        ["account_id", "operation_type", sa.text("created_at DESC")],
+    )
+
+    op.create_table(
+        "alerts",
+        sa.Column("id", UUID(as_uuid=False), primary_key=True),
+        sa.Column("merchant_id", UUID(as_uuid=False), nullable=False),
+        sa.Column(
+            "account_id",
+            UUID(as_uuid=False),
+            sa.ForeignKey("accounts.id", ondelete="CASCADE"),
+            nullable=True,
+        ),
+        sa.Column("module", sa.String(64), nullable=False),
+        sa.Column("severity", alert_severity_enum, nullable=False),
+        sa.Column("message", sa.Text, nullable=False),
+        sa.Column(
+            "created_at",
+            TIMESTAMP(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+    )
+    op.create_index(
+        "ix_alerts_merchant_module_created_at",
+        "alerts",
+        ["merchant_id", "module", sa.text("created_at DESC")],
     )
 
 
 def downgrade() -> None:
+    op.drop_index(
+        "ix_alerts_merchant_module_created_at",
+        table_name="alerts",
+    )
+    op.drop_table("alerts")
+
+    op.drop_index(
+        "ix_operation_logs_account_type_created_at",
+        table_name="operation_logs",
+    )
+    op.drop_table("operation_logs")
+
     op.drop_index(
         "ix_reply_histories_account_created_at",
         table_name="reply_histories",
@@ -182,6 +275,10 @@ def downgrade() -> None:
     op.drop_index("ix_reply_histories_account_id", table_name="reply_histories")
     op.drop_table("reply_histories")
 
+    op.drop_index(
+        "ix_account_risk_configs_merchant_id",
+        table_name="account_risk_configs",
+    )
     op.drop_table("account_risk_configs")
 
     op.drop_index(
@@ -194,6 +291,9 @@ def downgrade() -> None:
     sa.Enum(name="reply_history_source_type_enum").drop(
         op.get_bind(), checkfirst=True
     )
+    sa.Enum(name="alert_severity_enum").drop(op.get_bind(), checkfirst=True)
+    sa.Enum(name="operation_status_enum").drop(op.get_bind(), checkfirst=True)
+    sa.Enum(name="operation_type_enum").drop(op.get_bind(), checkfirst=True)
     sa.Enum(name="risk_severity_enum").drop(op.get_bind(), checkfirst=True)
     sa.Enum(name="risk_match_mode_enum").drop(op.get_bind(), checkfirst=True)
     sa.Enum(name="risk_keyword_category_enum").drop(op.get_bind(), checkfirst=True)
