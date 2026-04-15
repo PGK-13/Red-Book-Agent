@@ -13,11 +13,6 @@ import logging
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-from fastapi import HTTPException, status
-from sqlalchemy import and_, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-
 from app.core.notifications import send_alert
 from app.core.rate_limiter import get_redis
 from app.core.security import decrypt, encrypt
@@ -27,6 +22,10 @@ from app.schemas.account import (
     PersonaUpdateRequest,
     ProxyUpdateRequest,
 )
+from fastapi import HTTPException, status
+from sqlalchemy import and_, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 logger = logging.getLogger(__name__)
 
@@ -271,7 +270,11 @@ async def update_persona(
         await db.flush()
         # 重新加载关系
         await db.refresh(account, ["persona"])
-    persona = account.persona
+        # refresh 后 account.persona 不为空，但 mypy 需要显式断言
+        persona = account.persona  # type: ignore[assignment]
+        assert persona is not None
+    else:
+        persona = account.persona
 
     update_fields = data.model_dump(exclude_unset=True)
     for field, value in update_fields.items():
@@ -344,7 +347,12 @@ async def update_proxy(
 
     # 校验设备指纹唯一性
     await _check_fingerprint_uniqueness(
-        merchant_id, account_id, data.user_agent, data.screen_resolution, data.timezone, db
+        merchant_id,
+        account_id,
+        data.user_agent,
+        data.screen_resolution,
+        data.timezone,
+        db,
     )
 
     if account.proxy_config is None:
@@ -360,7 +368,10 @@ async def update_proxy(
         db.add(proxy)
         await db.flush()
         await db.refresh(account, ["proxy_config"])
-        return account.proxy_config
+        # refresh 后 proxy_config 不为空，但 mypy 需要显式断言
+        updated_proxy = account.proxy_config
+        assert updated_proxy is not None
+        return updated_proxy
 
     proxy = account.proxy_config
     proxy.proxy_url = encrypt(data.proxy_url)
@@ -564,9 +575,11 @@ async def sync_profile(
         browser = await pw.chromium.launch(headless=True)
         try:
             context = await _create_browser_context(browser, account, db)
-            page = await context.new_page()
+            page = await context.new_page()  # type: ignore[attr-defined]
 
-            profile_url = f"https://www.xiaohongshu.com/user/profile/{account.xhs_user_id}"
+            profile_url = (
+                f"https://www.xiaohongshu.com/user/profile/{account.xhs_user_id}"
+            )
             await page.goto(profile_url, wait_until="networkidle")
 
             # 提取画像数据
@@ -600,16 +613,18 @@ async def sync_profile(
             await db.refresh(account, ["persona"])
 
             logger.info("Profile synced for account %s", account_id)
-            return account.persona
+            synced = account.persona
+            assert synced is not None
+            return synced
 
         finally:
-            await browser.close()
+            await browser.close()  # type: ignore[attr-defined]
 
 
 async def _safe_text(page: object, selector: str) -> str | None:
     """安全提取页面元素文本。"""
     try:
-        element = await page.query_selector(selector)  # type: ignore[union-attr]
+        element = await page.query_selector(selector)  # type: ignore[attr-defined]
         if element:
             return (await element.text_content() or "").strip()
     except Exception:
@@ -620,7 +635,7 @@ async def _safe_text(page: object, selector: str) -> str | None:
 async def _extract_tags(page: object) -> list[str]:
     """提取用户标签列表。"""
     try:
-        elements = await page.query_selector_all(".user-tag")  # type: ignore[union-attr]
+        elements = await page.query_selector_all(".user-tag")  # type: ignore[attr-defined]
         tags: list[str] = []
         for el in elements:
             text = await el.text_content()
@@ -678,12 +693,14 @@ def _parse_cookies(cookie_str: str, domain: str = ".xiaohongshu.com") -> list[di
         if "=" not in pair:
             continue
         name, value = pair.split("=", 1)
-        cookies.append({
-            "name": name.strip(),
-            "value": value.strip(),
-            "domain": domain,
-            "path": "/",
-        })
+        cookies.append(
+            {
+                "name": name.strip(),
+                "value": value.strip(),
+                "domain": domain,
+                "path": "/",
+            }
+        )
     return cookies
 
 
@@ -723,7 +740,7 @@ async def _create_browser_context(
             account.id,
         )
 
-    context = await browser.new_context(**context_kwargs)  # type: ignore[union-attr]
+    context = await browser.new_context(**context_kwargs)  # type: ignore[attr-defined]
 
     # 注入解密后的 Cookie
     if account.cookie_enc:
@@ -815,7 +832,7 @@ async def start_qr_login(
     pw_instance = await async_playwright().start()
     browser = await pw_instance.chromium.launch(headless=True)
     context = await _create_browser_context(browser, account, db)
-    page = await context.new_page()
+    page = await context.new_page()  # type: ignore[attr-defined]
 
     try:
         await page.goto(XHS_LOGIN_URL, wait_until="networkidle")
@@ -833,12 +850,14 @@ async def start_qr_login(
         # 创建 Redis 会话
         session_id = str(uuid4())
         redis = get_redis()
-        session_data = json.dumps({
-            "account_id": account_id,
-            "merchant_id": merchant_id,
-            "status": "waiting",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        })
+        session_data = json.dumps(
+            {
+                "account_id": account_id,
+                "merchant_id": merchant_id,
+                "status": "waiting",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
         await redis.setex(
             f"{QR_SESSION_PREFIX}{session_id}",
             QR_SESSION_TTL,
@@ -849,15 +868,15 @@ async def start_qr_login(
         # 将 browser 引用存入 Redis 无法序列化，实际生产中需使用
         # 浏览器上下文池或进程内缓存。此处简化处理：关闭 context，
         # poll 时重新创建。
-        await context.close()
-        await browser.close()
+        await context.close()  # type: ignore[attr-defined]
+        await browser.close()  # type: ignore[attr-defined]
         await pw_instance.stop()
 
         return {"session_id": session_id, "qr_image_base64": qr_image_base64}
 
     except Exception:
-        await context.close()
-        await browser.close()
+        await context.close()  # type: ignore[attr-defined]
+        await browser.close()  # type: ignore[attr-defined]
         await pw_instance.stop()
         raise
 
@@ -922,7 +941,7 @@ async def poll_qr_login_status(
             browser = await pw.chromium.launch(headless=True)
             try:
                 context = await _create_browser_context(browser, account, db)
-                page = await context.new_page()
+                page = await context.new_page()  # type: ignore[attr-defined]
                 await page.goto(XHS_LOGIN_URL, wait_until="networkidle")
 
                 # 检测登录成功标志：URL 变化或特定元素出现
@@ -932,20 +951,20 @@ async def poll_qr_login_status(
                 ):
                     login_success = True
                     # 提取所有 Cookie
-                    cookies = await context.cookies()
-                    cookie_parts = [
-                        f"{c['name']}={c['value']}" for c in cookies
-                    ]
+                    cookies = await context.cookies()  # type: ignore[attr-defined]
+                    cookie_parts = [f"{c['name']}={c['value']}" for c in cookies]
                     extracted_cookies = "; ".join(cookie_parts)
 
-                await context.close()
+                await context.close()  # type: ignore[attr-defined]
             finally:
-                await browser.close()
+                await browser.close()  # type: ignore[attr-defined]
 
     except ImportError:
         logger.warning("Playwright not available for QR login polling")
     except Exception:
-        logger.exception("Error during QR login status check for session %s", session_id)
+        logger.exception(
+            "Error during QR login status check for session %s", session_id
+        )
 
     if login_success and extracted_cookies:
         # 加密存储 Cookie
@@ -958,7 +977,9 @@ async def poll_qr_login_status(
         if remaining_ttl > 0:
             await redis.setex(session_key, remaining_ttl, json.dumps(session_data))
 
-        logger.info("QR login success for account %s, session %s", account_id, session_id)
+        logger.info(
+            "QR login success for account %s, session %s", account_id, session_id
+        )
         return {"status": "success"}
 
     return {"status": "waiting"}

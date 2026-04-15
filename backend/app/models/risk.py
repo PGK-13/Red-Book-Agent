@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
+from app.db.session import Base
 from sqlalchemy import (
     ARRAY,
     Boolean,
@@ -21,8 +22,6 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
-
-from app.db.session import Base
 
 risk_keyword_category_enum = Enum(
     "platform_banned",
@@ -133,9 +132,7 @@ class AccountRiskConfig(Base):
     """Per-account risk control configuration."""
 
     __tablename__ = "account_risk_configs"
-    __table_args__ = (
-        Index("ix_account_risk_configs_merchant_id", "merchant_id"),
-    )
+    __table_args__ = (Index("ix_account_risk_configs_merchant_id", "merchant_id"),)
 
     id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())

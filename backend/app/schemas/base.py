@@ -7,6 +7,7 @@ T = TypeVar("T")
 
 class BaseResponse(BaseModel, Generic[T]):
     """统一响应格式。"""
+
     code: int = 0
     message: str = "success"
     data: T | None = None
@@ -20,6 +21,7 @@ class ErrorResponse(BaseModel):
 
 class PaginatedResponse(BaseModel, Generic[T]):
     """分页响应（cursor 分页）。"""
+
     code: int = 0
     message: str = "success"
     data: "PaginatedData[T]"

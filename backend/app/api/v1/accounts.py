@@ -9,8 +9,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Query
-
 from app.dependencies import CurrentMerchantId, DbSession
 from app.schemas.account import (
     AccountCreateRequest,
@@ -27,6 +25,7 @@ from app.schemas.account import (
 )
 from app.schemas.base import BaseResponse, PaginatedData, PaginatedResponse
 from app.services import account_service
+from fastapi import APIRouter, Query
 
 router = APIRouter(prefix="/accounts", tags=["账号管理"])
 
@@ -98,9 +97,7 @@ async def oauth_callback(
     body: OAuthCallbackRequest,
 ) -> BaseResponse:
     """OAuth 2.0 授权回调。"""
-    await account_service.handle_oauth_callback(
-        merchant_id, account_id, body.code, db
-    )
+    await account_service.handle_oauth_callback(merchant_id, account_id, body.code, db)
     return BaseResponse(message="OAuth 授权成功")
 
 
@@ -121,9 +118,7 @@ async def update_cookie(
 # ── 状态 ──
 
 
-@router.get(
-    "/{account_id}/status", response_model=BaseResponse[AccountStatusResponse]
-)
+@router.get("/{account_id}/status", response_model=BaseResponse[AccountStatusResponse])
 async def get_account_status(
     account_id: str,
     merchant_id: CurrentMerchantId,
@@ -222,9 +217,7 @@ async def poll_qr_login_status(
     result = await account_service.poll_qr_login_status(
         merchant_id, account_id, session_id, db
     )
-    return BaseResponse(
-        data=QrLoginStatusResponse(status=result["status"])
-    )
+    return BaseResponse(data=QrLoginStatusResponse(status=result["status"]))  # type: ignore[arg-type]
 
 
 # ── 响应转换辅助 ──

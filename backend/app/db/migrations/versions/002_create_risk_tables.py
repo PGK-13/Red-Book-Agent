@@ -5,8 +5,8 @@ Revises: 001_account_tables
 Create Date: 2026-04-11
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import ARRAY, TIMESTAMP, UUID
 
 # revision identifiers, used by Alembic.
@@ -293,9 +293,7 @@ def downgrade() -> None:
     op.drop_index("ix_risk_keywords_merchant_id", table_name="risk_keywords")
     op.drop_table("risk_keywords")
 
-    sa.Enum(name="reply_history_source_type_enum").drop(
-        op.get_bind(), checkfirst=True
-    )
+    sa.Enum(name="reply_history_source_type_enum").drop(op.get_bind(), checkfirst=True)
     sa.Enum(name="alert_severity_enum").drop(op.get_bind(), checkfirst=True)
     sa.Enum(name="operation_status_enum").drop(op.get_bind(), checkfirst=True)
     sa.Enum(name="operation_type_enum").drop(op.get_bind(), checkfirst=True)

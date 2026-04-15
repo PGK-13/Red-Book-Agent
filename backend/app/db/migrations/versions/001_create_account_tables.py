@@ -5,9 +5,9 @@ Revises:
 Create Date: 2026-04-10
 """
 
-from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID, TIMESTAMP, ARRAY
+from alembic import op
+from sqlalchemy.dialects.postgresql import ARRAY, TIMESTAMP, UUID
 
 # revision identifiers, used by Alembic.
 revision = "001_account_tables"
@@ -18,9 +18,7 @@ depends_on = None
 
 def upgrade() -> None:
     # ── Enum 类型 ──
-    access_type_enum = sa.Enum(
-        "oauth", "rpa", "browser", name="access_type_enum"
-    )
+    access_type_enum = sa.Enum("oauth", "rpa", "browser", name="access_type_enum")
     account_status_enum = sa.Enum(
         "active", "suspended", "auth_expired", "banned", name="account_status_enum"
     )
@@ -49,9 +47,7 @@ def upgrade() -> None:
             server_default=sa.func.now(),
             nullable=False,
         ),
-        sa.UniqueConstraint(
-            "merchant_id", "xhs_user_id", name="uq_merchant_xhs_user"
-        ),
+        sa.UniqueConstraint("merchant_id", "xhs_user_id", name="uq_merchant_xhs_user"),
     )
     op.create_index("ix_accounts_merchant_id", "accounts", ["merchant_id"])
     op.create_index("ix_accounts_status", "accounts", ["status"])
@@ -95,9 +91,7 @@ def upgrade() -> None:
             nullable=False,
             server_default="Asia/Shanghai",
         ),
-        sa.Column(
-            "is_active", sa.Boolean, nullable=False, server_default="true"
-        ),
+        sa.Column("is_active", sa.Boolean, nullable=False, server_default="true"),
     )
 
 

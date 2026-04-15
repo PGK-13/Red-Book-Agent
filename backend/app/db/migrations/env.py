@@ -1,12 +1,6 @@
 import asyncio
 from logging.config import fileConfig
 
-from alembic import context
-from sqlalchemy.ext.asyncio import create_async_engine
-
-from app.config import settings
-from app.db.session import Base
-
 # 导入所有模型以确保 Alembic 能检测到表变更
 import app.models.account  # noqa: F401
 import app.models.analytics  # noqa: F401
@@ -14,6 +8,10 @@ import app.models.content  # noqa: F401
 import app.models.interaction  # noqa: F401
 import app.models.knowledge  # noqa: F401
 import app.models.risk  # noqa: F401
+from alembic import context
+from app.config import settings
+from app.db.session import Base
+from sqlalchemy.ext.asyncio import create_async_engine
 
 config = context.config
 if config.config_file_name is not None:
