@@ -20,7 +20,12 @@
     - 用于保存最近回复历史并支持最近 100 条相似度比对
     - _Requirements: E3.1, E3.2_
   - [ ] 1.4 创建 Alembic 迁移脚本生成 `risk_keywords`、`account_risk_configs`、`reply_histories`
-    - 在 `backend/app/db/migrations/versions/` 下新增迁移文件
+- [ ] 1.4 在 `backend/app/models/risk.py` 中新增 `OperationLog` 和 `Alert` ORM 模型
+    - OperationLog：`id(UUID PK)`、`merchant_id(UUID, indexed)`、`account_id(UUID FK → accounts.id)`、`operation_type(Enum: note_publish/comment_reply/dm_send/comment_inbound/dm_inbound)`、`status(Enum: success/blocked/rewrite_required/manual_review)`、`risk_decision(VARCHAR 32)`、`violations(TEXT[])`、`content_preview(Text, nullable)`、`created_at(TIMESTAMPTZ)`
+    - Alert：`id(UUID PK)`、`merchant_id(UUID, indexed)`、`account_id(UUID FK → accounts.id, nullable)`、`module(VARCHAR 32, default=risk)`、`alert_type(VARCHAR 64)`、`message(Text)`、`severity(Enum: info/warning/critical)`、`is_resolved(Boolean, default=False)`、`created_at(TIMESTAMPTZ)`
+    - 添加复合索引：`operation_logs(account_id, operation_type, created_at DESC)`、`alerts(merchant_id, module, created_at DESC)`
+    - _Requirements: E1.3, E2.2, E3.5_
+  - [ ] 1.5 创建 Alembic 迁移脚本生成 `risk_keywords`、`account_risk_configs`、`reply_histories`、`operation_logs`、`alerts`
     - 包含所需索引和唯一约束
     - _Requirements: E1.1, E2.4, E3.3_
 
@@ -72,7 +77,7 @@
   - [ ] 3.8 实现内容变体注入与相似度检测
     - `inject_variants(content)`：同义词替换、语序微调、语气词增减
     - `detect_similarity(account_id, candidate, db)`：与最近 100 条历史回复比对，阈值 `0.85`
-    - 相似度超阈值时返回命中历史记录与改写建议
+- 注意：变体注入（同义词替换、语序微调）属于模块 C 内容生成引擎的职责，E 模块只负责检测
     - _Requirements: E3.1, E3.2_
   - [ ] 3.9 实现竞品避嫌检测
     - 对 `category=competitor` 的关键词执行全词匹配和编辑距离 ≤ 1 的模糊匹配
@@ -110,7 +115,8 @@
 
 - [ ] 6. 集成模块 C / D 的风控调用链
   - [ ] 6.1 在 `backend/app/services/content_service.py` 中接入出站风控
-    - 草稿生成完成后、正式发布前调用 `RiskService.scan_output(..., scene="note_publish")`
+- [ ]* 6. 集成模块 C / D 的风控调用链（建议在 C/D 模块各自实现时接入，此处仅作参考）
+  - [ ]* 6.1 在 `backend/app/services/content_service.py` 中接入出站风控
     - 命中可改写问题时驱动内容引擎局部重写，最多 3 次
     - 连续失败后将 `content_drafts.risk_status` 置为 `manual_review`
     - _Requirements: E1.4, E2.1, E2.4_
@@ -119,7 +125,7 @@
     - 对自动回复、自动私信发送前调用 `scan_output`
     - 回复发送成功后写入 `ReplyHistory`
     - _Requirements: E1.3, E2.1, E3.1, E3.2_
-  - [ ] 6.3 在相关 Agent / Tool 层接入变体注入与等待节奏
+  - [ ]* 6.3 在相关 Agent / Tool 层接入变体注入与等待节奏
     - `agent/tools/comment_reply.py`
     - `agent/tools/dm_sender.py`
     - `agent/tools/risk_scan.py`
