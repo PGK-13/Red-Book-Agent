@@ -39,9 +39,7 @@ async def _probe_all() -> dict:
         try:
             results = await account_service.probe_all_accounts(db)
             await db.commit()
-            logger.info(
-                "Account probe completed: %d accounts checked", len(results)
-            )
+            logger.info("Account probe completed: %d accounts checked", len(results))
             return {"probed": len(results), "results": results}
         except Exception:
             await db.rollback()

@@ -49,14 +49,10 @@ async def _sync_all() -> dict:
             failed = 0
             for acct in accounts:
                 try:
-                    await account_service.sync_profile(
-                        acct.merchant_id, acct.id, db
-                    )
+                    await account_service.sync_profile(acct.merchant_id, acct.id, db)
                     synced += 1
                 except Exception:
-                    logger.exception(
-                        "Failed to sync profile for account %s", acct.id
-                    )
+                    logger.exception("Failed to sync profile for account %s", acct.id)
                     failed += 1
 
             await db.commit()
