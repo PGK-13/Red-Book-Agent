@@ -1,7 +1,16 @@
-from app.api.v1 import accounts, analytics, content, interaction, knowledge, risk
-from app.config import settings
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from app.api.v1 import (
+    accounts,
+    analytics,
+    content,
+    interaction,
+    knowledge,
+    qr_login,
+    risk,
+)
+from app.config import settings
 
 app = FastAPI(
     title="小红书营销自动化 Agent",
@@ -18,7 +27,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 注册路由
+# 注册路由（公开路由必须在 accounts.router 之前，避免路径被 /{account_id} 拦截）
+app.include_router(qr_login.router, prefix="/api/v1")
 app.include_router(accounts.router, prefix="/api/v1")
 app.include_router(knowledge.router, prefix="/api/v1")
 app.include_router(content.router, prefix="/api/v1")

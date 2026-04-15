@@ -107,3 +107,38 @@ class QrLoginStatusResponse(BaseModel):
     """扫码登录状态轮询响应。"""
 
     status: Literal["waiting", "success", "expired"]
+
+
+class UserInfo(BaseModel):
+    """用户基本信息。"""
+
+    nickname: str
+    avatar: str | None = None
+    xhs_user_id: str
+
+
+class PublicQrLoginStatusResponse(BaseModel):
+    """公开扫码登录状态轮询响应。"""
+
+    status: Literal["waiting", "success", "expired", "need_captcha"]
+    token: str | None = None
+    user: UserInfo | None = None
+
+
+class CaptchaSubmitRequest(BaseModel):
+    """验证码提交请求。"""
+
+    session_id: str = Field(..., description="扫码会话 ID")
+    captcha: str = Field(
+        ...,
+        min_length=6,
+        max_length=6,
+        pattern=r"^\d{6}$",
+        description="6 位数字验证码",
+    )
+
+
+class CaptchaSubmitResponse(BaseModel):
+    """验证码提交响应。"""
+
+    status: Literal["waiting", "expired", "success", "need_captcha"]

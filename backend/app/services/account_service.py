@@ -13,6 +13,11 @@ import logging
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
+from fastapi import HTTPException, status
+from sqlalchemy import and_, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from app.core.notifications import send_alert
 from app.core.rate_limiter import get_redis
 from app.core.security import decrypt, encrypt
@@ -22,10 +27,6 @@ from app.schemas.account import (
     PersonaUpdateRequest,
     ProxyUpdateRequest,
 )
-from fastapi import HTTPException, status
-from sqlalchemy import and_, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 logger = logging.getLogger(__name__)
 
@@ -798,7 +799,30 @@ async def get_browser_context(
 
 QR_SESSION_TTL = 300  # 5 分钟
 QR_SESSION_PREFIX = "qr_session:"
-XHS_LOGIN_URL = "https://creator.xiaohongshu.com/login"
+PUB_QR_SESSION_PREFIX = "pub_qr_session:"
+XHS_LOGIN_URL = "https://www.xiaohongshu.com"
+
+# 二维码区域选择器（小红书主站登录弹窗中的二维码）
+QR_CODE_IMG_SELECTOR = ".code-area"
+
+# 登录成功检测选择器
+LOGIN_MODAL_SELECTOR = ".login-modal"
+LOGIN_SUCCESS_SELECTOR = ".user-avatar, .reds-avatar"
+
+# 验证码相关 CSS 选择器（小红书扫码确认后弹出的短信验证码）
+# 注意：仅在二维码图片消失后才使用，避免误匹配登录页手机号验证码输入框
+CAPTCHA_INPUT_SELECTOR = (
+    "input[placeholder*='验证码'], "
+    "input[type='tel'][maxlength='6'], "
+    "input.captcha-input"
+)
+CAPTCHA_SUBMIT_SELECTOR = (
+    "button.captcha-submit, " "button[class*='submit'], " ".captcha-container button"
+)
+
+# 公开扫码会话的进程内 Playwright 引用缓存
+# 结构: {session_id: {"pw_instance": ..., "browser": ..., "context": ..., "page": ...}}
+_active_pub_qr_sessions: dict[str, dict] = {}
 
 
 async def start_qr_login(
@@ -983,3 +1007,310 @@ async def poll_qr_login_status(
         return {"status": "success"}
 
     return {"status": "waiting"}
+
+
+# ── 3.8 公开扫码登录（含验证码检测） ──
+
+
+async def public_start_qr_login() -> dict[str, str]:
+    """启动公开扫码登录，返回二维码图片和 session_id。
+
+    通过 Playwright 打开小红书主站，截取登录弹窗中的二维码区域为 base64 图片。
+    在 Redis 中创建公开扫码会话（TTL=5min），并将 Playwright 实例
+    存入进程内缓存 ``_active_pub_qr_sessions`` 以便后续轮询复用。
+
+    Returns:
+        {"session_id": str, "qr_image_base64": str}
+    """
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Playwright 未安装",
+        )
+
+    pw_instance = await async_playwright().start()
+    browser = await pw_instance.chromium.launch(headless=True)
+    context = await browser.new_context(
+        user_agent=(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
+    )
+    page = await context.new_page()
+
+    try:
+        await page.goto(XHS_LOGIN_URL, wait_until="domcontentloaded")
+        await page.wait_for_timeout(3000)
+
+        # 截取二维码区域（.code-area 是小红书登录弹窗中的二维码容器）
+        qr_element = await page.query_selector(QR_CODE_IMG_SELECTOR)
+        if qr_element:
+            qr_bytes = await qr_element.screenshot()
+        else:
+            qr_bytes = await page.screenshot()
+
+        qr_image_base64 = base64.b64encode(qr_bytes).decode()
+
+        # 创建 Redis 会话
+        session_id = str(uuid4())
+        redis = get_redis()
+        session_data = json.dumps(
+            {
+                "status": "waiting",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "token": None,
+                "user": None,
+            }
+        )
+        await redis.setex(
+            f"{PUB_QR_SESSION_PREFIX}{session_id}",
+            QR_SESSION_TTL,
+            session_data,
+        )
+
+        # 将 Playwright 引用存入进程内缓存，轮询时复用
+        _active_pub_qr_sessions[session_id] = {
+            "pw_instance": pw_instance,
+            "browser": browser,
+            "context": context,
+            "page": page,
+        }
+
+        logger.info("Public QR login started, session %s", session_id)
+        return {"session_id": session_id, "qr_image_base64": qr_image_base64}
+
+    except Exception:
+        logger.exception("Failed to start public QR login")
+        await page.close()
+        await context.close()
+        await browser.close()
+        await pw_instance.stop()
+        raise
+
+
+async def public_poll_qr_login_status(session_id: str) -> dict:
+    """轮询公开扫码登录状态（含验证码检测）。
+
+    在检测登录成功之前，先检查页面是否存在验证码输入框。
+    检测到验证码后，Redis 会话状态更新为 ``need_captcha``，
+    Playwright 实例保持存活等待验证码提交。
+
+    Args:
+        session_id: 扫码会话 ID。
+
+    Returns:
+        {"status": str, "token": str | None, "user": dict | None}
+    """
+    redis = get_redis()
+    session_key = f"{PUB_QR_SESSION_PREFIX}{session_id}"
+    raw = await redis.get(session_key)
+
+    if raw is None:
+        _cleanup_pub_qr_session(session_id)
+        return {"status": "expired", "token": None, "user": None}
+
+    session_data = json.loads(raw)
+
+    # 已检测到验证码，等待用户提交，直接返回
+    if session_data.get("status") == "need_captcha":
+        return {"status": "need_captcha", "token": None, "user": None}
+
+    # 已登录成功，返回缓存的 token 和 user
+    if session_data.get("status") == "success":
+        return {
+            "status": "success",
+            "token": session_data.get("token"),
+            "user": session_data.get("user"),
+        }
+
+    # status == "waiting"：通过 Playwright 检测登录状态
+    pw_session = _active_pub_qr_sessions.get(session_id)
+    if pw_session is None:
+        return {"status": "waiting", "token": None, "user": None}
+
+    page = pw_session["page"]
+
+    try:
+        # ── 检查二维码区域是否仍在页面上 ──
+        qr_img = await page.query_selector(QR_CODE_IMG_SELECTOR)
+        # 同时检查登录弹窗是否还在
+        login_modal = await page.query_selector(LOGIN_MODAL_SELECTOR)
+
+        # ── 验证码检测（仅在二维码消失后，即用户已扫码确认） ──
+        if not qr_img and login_modal:
+            captcha_input = await page.query_selector(CAPTCHA_INPUT_SELECTOR)
+            if captcha_input:
+                session_data["status"] = "need_captcha"
+                remaining_ttl = await redis.ttl(session_key)
+                if remaining_ttl > 0:
+                    await redis.setex(
+                        session_key, remaining_ttl, json.dumps(session_data)
+                    )
+                logger.info(
+                    "Captcha input detected for public QR session %s",
+                    session_id,
+                )
+                return {"status": "need_captcha", "token": None, "user": None}
+
+        # ── 登录成功检测：弹窗消失或用户头像出现 ──
+        if not login_modal:
+            await page.wait_for_timeout(1000)
+            login_modal_recheck = await page.query_selector(LOGIN_MODAL_SELECTOR)
+            if not login_modal_recheck:
+                logged_in = True
+            else:
+                logged_in = False
+        else:
+            avatar = await page.query_selector(LOGIN_SUCCESS_SELECTOR)
+            logged_in = avatar is not None
+
+        if logged_in:
+            current_url = page.url
+            nickname = await _safe_text(page, ".user-name, .nickname") or ""
+            avatar_el = await page.query_selector(
+                ".user-avatar img, .reds-avatar img, .avatar img"
+            )
+            avatar_url: str | None = None
+            if avatar_el:
+                avatar_url = await avatar_el.get_attribute("src")
+
+            xhs_user_id = ""
+            if "/user/" in current_url:
+                xhs_user_id = current_url.split("/user/")[-1].split("?")[0]
+
+            # 签发 JWT
+            from jose import jwt as jose_jwt
+
+            from app.config import settings
+
+            payload = {
+                "sub": xhs_user_id,
+                "nickname": nickname,
+                "avatar": avatar_url,
+                "exp": datetime.now(timezone.utc)
+                + timedelta(minutes=settings.jwt_expire_minutes),
+            }
+            token = jose_jwt.encode(
+                payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm
+            )
+
+            user_info = {
+                "nickname": nickname,
+                "avatar": avatar_url,
+                "xhs_user_id": xhs_user_id,
+            }
+
+            session_data["status"] = "success"
+            session_data["token"] = token
+            session_data["user"] = user_info
+            remaining_ttl = await redis.ttl(session_key)
+            if remaining_ttl > 0:
+                await redis.setex(session_key, remaining_ttl, json.dumps(session_data))
+
+            _cleanup_pub_qr_session(session_id)
+            logger.info("Public QR login success for session %s", session_id)
+            return {"status": "success", "token": token, "user": user_info}
+
+    except Exception:
+        logger.exception(
+            "Error during public QR login status check for session %s",
+            session_id,
+        )
+        _cleanup_pub_qr_session(session_id)
+        return {"status": "expired", "token": None, "user": None}
+
+    return {"status": "waiting", "token": None, "user": None}
+
+
+async def public_submit_captcha(session_id: str, captcha: str) -> dict[str, str]:
+    """在 Playwright 页面中填入验证码并提交。
+
+    从 Redis 读取会话状态，仅在 ``need_captcha`` 状态下执行 Playwright
+    操作：填入验证码、点击提交按钮（或模拟回车），然后将会话状态回退为
+    ``waiting`` 以便后续轮询继续检测登录结果。
+
+    Args:
+        session_id: 扫码会话 ID。
+        captcha: 6 位数字验证码。
+
+    Returns:
+        包含 ``status`` 键的字典。
+    """
+    redis = get_redis()
+    session_key = f"{PUB_QR_SESSION_PREFIX}{session_id}"
+    raw = await redis.get(session_key)
+
+    if raw is None:
+        return {"status": "expired"}
+
+    session_data = json.loads(raw)
+
+    if session_data.get("status") != "need_captcha":
+        return {"status": session_data.get("status", "expired")}
+
+    pw_session = _active_pub_qr_sessions.get(session_id)
+    if pw_session is None:
+        return {"status": "expired"}
+
+    page = pw_session["page"]
+
+    try:
+        await page.fill(CAPTCHA_INPUT_SELECTOR, captcha)
+
+        submit_btn = await page.query_selector(CAPTCHA_SUBMIT_SELECTOR)
+        if submit_btn:
+            await submit_btn.click()
+        else:
+            await page.keyboard.press("Enter")
+
+        await page.wait_for_timeout(1000)
+
+        session_data["status"] = "waiting"
+        remaining_ttl = await redis.ttl(session_key)
+        if remaining_ttl > 0:
+            await redis.setex(session_key, remaining_ttl, json.dumps(session_data))
+
+        logger.info("Captcha submitted for public QR session %s", session_id)
+        return {"status": "waiting"}
+
+    except Exception:
+        logger.exception(
+            "Failed to submit captcha for public QR session %s", session_id
+        )
+        _cleanup_pub_qr_session(session_id)
+        return {"status": "expired"}
+
+
+def _cleanup_pub_qr_session(session_id: str) -> None:
+    """清理公开扫码会话的 Playwright 资源。
+
+    从 ``_active_pub_qr_sessions`` 中移除并关闭浏览器实例。
+    静默处理所有异常，确保不会因清理失败而中断业务流程。
+
+    Args:
+        session_id: 扫码会话 ID。
+    """
+    pw_session = _active_pub_qr_sessions.pop(session_id, None)
+    if pw_session is None:
+        return
+    try:
+        import asyncio
+
+        loop = asyncio.get_event_loop()
+        page = pw_session.get("page")
+        context = pw_session.get("context")
+        browser = pw_session.get("browser")
+        pw_instance = pw_session.get("pw_instance")
+        if page:
+            loop.create_task(page.close())
+        if context:
+            loop.create_task(context.close())
+        if browser:
+            loop.create_task(browser.close())
+        if pw_instance:
+            loop.create_task(pw_instance.stop())
+    except Exception:
+        logger.debug("Error cleaning up public QR session %s", session_id)
