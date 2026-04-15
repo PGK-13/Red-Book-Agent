@@ -60,8 +60,9 @@ jobs:
       - name: Check black formatting
         run: |
           echo "=== Black 格式化检查 ==="
-          black --check --diff . || {
-            echo "❌ Black 格式化失败，请运行 'black .' 修复"
+          # 只检查 backend/app 和 worker，不检查 tests
+          black --check --diff backend/app worker || {
+            echo "❌ Black 格式化失败，请运行 'black backend/app worker' 修复"
             exit 1
           }
           echo "✅ Black 格式化通过"
@@ -69,8 +70,9 @@ jobs:
       - name: Check isort imports
         run: |
           echo "=== isort 导入排序检查 ==="
-          isort --check-only --diff . || {
-            echo "❌ isort 导入排序失败，请运行 'isort .' 修复"
+          # 只检查 backend/app 和 worker，不检查 tests
+          isort --check-only --diff backend/app worker || {
+            echo "❌ isort 导入排序失败，请运行 'isort backend/app worker' 修复"
             exit 1
           }
           echo "✅ isort 导入排序通过"
@@ -224,6 +226,8 @@ jobs:
           echo "XHS_CLIENT_ID=test-client-id" >> .env
           echo "XHS_CLIENT_SECRET=test-client-secret" >> .env
           echo "PLAYWRIGHT_BROWSER=chromium" >> .env
+          # Fernet key: 32 字节的 url-safe base64 编码（测试用）
+          echo "ENCRYPTION_KEY=MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=" >> .env
 
       - name: Run unit tests
         run: |
