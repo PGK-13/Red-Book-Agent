@@ -8,24 +8,52 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Quick Start
 
+### 1. Start Docker infrastructure (required)
+
 ```bash
-# 1. Start local infrastructure
-cp infra/.env.example .env
-docker-compose -f infra/docker-compose.yml up -d
-
-# 2. Start backend
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-
-# 3. Start Celery worker
-cd worker
-celery -A celery_app worker --loglevel=info
-
-# 4. Start frontend
-cd frontend && npm install && npm run dev
+cd /Users/zklee/coding/Red-Book-Agent
+docker compose -f infra/docker-compose.yml up -d
 ```
+
+验证服务状态：
+```bash
+docker compose -f infra/docker-compose.yml ps
+```
+
+### 2. Start backend
+
+```bash
+cd /Users/zklee/coding/Red-Book-Agent/backend
+source .venv/bin/activate
+uvicorn app.main:app --reload --port 8000
+```
+
+### 3. Start Celery worker (optional, for async tasks)
+
+```bash
+cd /Users/zklee/coding/Red-Book-Agent/worker
+celery -A celery_app worker --loglevel=info
+```
+
+### 4. Start frontend
+
+```bash
+cd /Users/zklee/coding/Red-Book-Agent/frontend
+npm install  # 首次运行
+npm run dev
+```
+
+### Service URLs
+
+| Service | URL |
+|---------|-----|
+| Backend API | http://localhost:8000 |
+| Backend Docs | http://localhost:8000/docs |
+| Frontend | http://localhost:3000 |
+| PostgreSQL | localhost:5432 |
+| Redis | localhost:6379 |
+| RabbitMQ | localhost:5672 |
+| Qdrant | http://localhost:6333 |
 
 ## Running Tests
 
