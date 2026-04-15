@@ -50,8 +50,6 @@ reply_history_source_type_enum = Enum(
     name="reply_history_source_type_enum",
 )
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 operation_type_enum = Enum(
     "note_publish",
     "comment_reply",
@@ -76,10 +74,6 @@ alert_severity_enum = Enum(
     name="alert_severity_enum",
 )
 
-=======
->>>>>>> fd63b6f388b7e6e9a0038aae838b134cae665a38
-=======
->>>>>>> fd63b6f388b7e6e9a0038aae838b134cae665a38
 
 class RiskKeyword(Base):
     """System-level and merchant-level risk keywords."""
@@ -138,29 +132,17 @@ class AccountRiskConfig(Base):
     """Per-account risk control configuration."""
 
     __tablename__ = "account_risk_configs"
-<<<<<<< HEAD
-<<<<<<< HEAD
     __table_args__ = (
         Index("ix_account_risk_configs_merchant_id", "merchant_id"),
     )
-=======
->>>>>>> fd63b6f388b7e6e9a0038aae838b134cae665a38
-=======
->>>>>>> fd63b6f388b7e6e9a0038aae838b134cae665a38
 
     id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
     )
-<<<<<<< HEAD
-<<<<<<< HEAD
     merchant_id: Mapped[str] = mapped_column(
         UUID(as_uuid=False),
         nullable=False,
     )
-=======
->>>>>>> fd63b6f388b7e6e9a0038aae838b134cae665a38
-=======
->>>>>>> fd63b6f388b7e6e9a0038aae838b134cae665a38
     account_id: Mapped[str] = mapped_column(
         UUID(as_uuid=False),
         ForeignKey("accounts.id", ondelete="CASCADE"),
@@ -197,13 +179,7 @@ class AccountRiskConfig(Base):
         nullable=False,
         server_default="10",
     )
-<<<<<<< HEAD
-<<<<<<< HEAD
     # This only applies to ORM-managed updates; raw SQL updates must set it explicitly.
-=======
->>>>>>> fd63b6f388b7e6e9a0038aae838b134cae665a38
-=======
->>>>>>> fd63b6f388b7e6e9a0038aae838b134cae665a38
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         server_default=func.now(),
@@ -216,22 +192,6 @@ class ReplyHistory(Base):
     """Latest outbound replies for deduplication and similarity checks."""
 
     __tablename__ = "reply_histories"
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-=======
->>>>>>> fd63b6f388b7e6e9a0038aae838b134cae665a38
-    __table_args__ = (
-        Index(
-            "ix_reply_histories_account_created_at",
-            "account_id",
-            "created_at",
-        ),
-    )
-<<<<<<< HEAD
->>>>>>> fd63b6f388b7e6e9a0038aae838b134cae665a38
-=======
->>>>>>> fd63b6f388b7e6e9a0038aae838b134cae665a38
 
     id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
@@ -258,12 +218,10 @@ class ReplyHistory(Base):
         nullable=False,
         index=True,
     )
-<<<<<<< HEAD
-<<<<<<< HEAD
 
 
 class OperationLog(Base):
-    """Audit trail for outbound and inbound risk operations."""
+    """Audit trail for outbound and inbound risk-related operations."""
 
     __tablename__ = "operation_logs"
 
@@ -349,7 +307,3 @@ Index(
     Alert.module,
     Alert.created_at.desc(),
 )
-=======
->>>>>>> fd63b6f388b7e6e9a0038aae838b134cae665a38
-=======
->>>>>>> fd63b6f388b7e6e9a0038aae838b134cae665a38
