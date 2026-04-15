@@ -70,9 +70,9 @@ jobs:
       - name: Check isort imports
         run: |
           echo "=== isort 导入排序检查 ==="
-          # 只检查 backend/app 和 worker，不检查 tests
-          isort --check-only --diff backend/app worker || {
-            echo "❌ isort 导入排序失败，请运行 'isort backend/app worker' 修复"
+          # 只检查 backend/app 和 worker，使用 --profile=black 与 black 保持一致
+          isort --check-only --diff --profile=black backend/app worker || {
+            echo "❌ isort 导入排序失败，请运行 'isort --profile=black backend/app worker' 修复"
             exit 1
           }
           echo "✅ isort 导入排序通过"

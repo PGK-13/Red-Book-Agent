@@ -33,11 +33,10 @@ def sync_all_profiles(self) -> dict:
 
 async def _sync_all() -> dict:
     """查询所有 active 账号，逐个调用 AccountService.sync_profile。"""
-    from sqlalchemy import select
-
     from app.db.session import AsyncSessionLocal
     from app.models.account import Account
     from app.services import account_service
+    from sqlalchemy import select
 
     async with AsyncSessionLocal() as db:
         try:

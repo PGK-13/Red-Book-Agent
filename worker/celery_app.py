@@ -1,7 +1,6 @@
+from app.config import settings
 from celery import Celery
 from kombu import Exchange, Queue
-
-from app.config import settings
 
 app = Celery(
     "xhs_worker",
