@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
+from app.db.session import Base
 from sqlalchemy import (
     ARRAY,
     Boolean,
@@ -16,12 +17,11 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
-
-from app.db.session import Base
 
 risk_keyword_category_enum = Enum(
     "platform_banned",
@@ -109,17 +109,17 @@ class RiskKeyword(Base):
     match_mode: Mapped[str] = mapped_column(
         risk_match_mode_enum,
         nullable=False,
-        server_default="exact",
+        server_default=text("'exact'"),
     )
     severity: Mapped[str] = mapped_column(
         risk_severity_enum,
         nullable=False,
-        server_default="block",
+        server_default=text("'block'"),
     )
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
-        server_default="true",
+        server_default=text("true"),
     )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
@@ -132,9 +132,7 @@ class AccountRiskConfig(Base):
     """Per-account risk control configuration."""
 
     __tablename__ = "account_risk_configs"
-    __table_args__ = (
-        Index("ix_account_risk_configs_merchant_id", "merchant_id"),
-    )
+    __table_args__ = (Index("ix_account_risk_configs_merchant_id", "merchant_id"),)
 
     id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
@@ -151,33 +149,33 @@ class AccountRiskConfig(Base):
     )
     rest_windows: Mapped[list[str]] = mapped_column(
         ARRAY(Text),
-        server_default="{}",
+        server_default=text("'{}'::text[]"),
         nullable=False,
     )
     comment_reply_limit_per_hour: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
-        server_default="20",
+        server_default=text("20"),
     )
     dm_send_limit_per_hour: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
-        server_default="50",
+        server_default=text("50"),
     )
     note_publish_limit_per_day: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
-        server_default="3",
+        server_default=text("3"),
     )
     dedup_similarity_threshold: Mapped[float] = mapped_column(
         Float,
         nullable=False,
-        server_default="0.85",
+        server_default=text("0.85"),
     )
     competitor_alert_threshold_per_hour: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
-        server_default="10",
+        server_default=text("10"),
     )
     # This only applies to ORM-managed updates; raw SQL updates must set it explicitly.
     updated_at: Mapped[datetime] = mapped_column(
@@ -221,7 +219,7 @@ class ReplyHistory(Base):
 
 
 class OperationLog(Base):
-    """Audit trail for outbound and inbound risk operations."""
+    """Audit trail for outbound and inbound risk-related operations."""
 
     __tablename__ = "operation_logs"
 

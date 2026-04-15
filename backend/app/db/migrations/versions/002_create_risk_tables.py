@@ -5,8 +5,8 @@ Revises: 001_account_tables
 Create Date: 2026-04-11
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import ARRAY, TIMESTAMP, UUID
 
 # revision identifiers, used by Alembic.
@@ -73,19 +73,19 @@ def upgrade() -> None:
             "match_mode",
             risk_match_mode_enum,
             nullable=False,
-            server_default="exact",
+            server_default=sa.text("'exact'"),
         ),
         sa.Column(
             "severity",
             risk_severity_enum,
             nullable=False,
-            server_default="block",
+            server_default=sa.text("'block'"),
         ),
         sa.Column(
             "is_active",
             sa.Boolean,
             nullable=False,
-            server_default="true",
+            server_default=sa.text("true"),
         ),
         sa.Column(
             "created_at",
@@ -118,36 +118,41 @@ def upgrade() -> None:
             unique=True,
             nullable=False,
         ),
-        sa.Column("rest_windows", ARRAY(sa.Text), server_default="{}", nullable=False),
+        sa.Column(
+            "rest_windows",
+            ARRAY(sa.Text),
+            server_default=sa.text("'{}'::text[]"),
+            nullable=False,
+        ),
         sa.Column(
             "comment_reply_limit_per_hour",
             sa.Integer,
             nullable=False,
-            server_default="20",
+            server_default=sa.text("20"),
         ),
         sa.Column(
             "dm_send_limit_per_hour",
             sa.Integer,
             nullable=False,
-            server_default="50",
+            server_default=sa.text("50"),
         ),
         sa.Column(
             "note_publish_limit_per_day",
             sa.Integer,
             nullable=False,
-            server_default="3",
+            server_default=sa.text("3"),
         ),
         sa.Column(
             "dedup_similarity_threshold",
             sa.Float,
             nullable=False,
-            server_default="0.85",
+            server_default=sa.text("0.85"),
         ),
         sa.Column(
             "competitor_alert_threshold_per_hour",
             sa.Integer,
             nullable=False,
-            server_default="10",
+            server_default=sa.text("10"),
         ),
         sa.Column(
             "updated_at",
@@ -288,9 +293,7 @@ def downgrade() -> None:
     op.drop_index("ix_risk_keywords_merchant_id", table_name="risk_keywords")
     op.drop_table("risk_keywords")
 
-    sa.Enum(name="reply_history_source_type_enum").drop(
-        op.get_bind(), checkfirst=True
-    )
+    sa.Enum(name="reply_history_source_type_enum").drop(op.get_bind(), checkfirst=True)
     sa.Enum(name="alert_severity_enum").drop(op.get_bind(), checkfirst=True)
     sa.Enum(name="operation_status_enum").drop(op.get_bind(), checkfirst=True)
     sa.Enum(name="operation_type_enum").drop(op.get_bind(), checkfirst=True)

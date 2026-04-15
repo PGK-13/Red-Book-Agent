@@ -1,8 +1,7 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-
 from app.api.v1 import accounts, analytics, content, interaction, knowledge, risk
 from app.config import settings
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
     title="小红书营销自动化 Agent",

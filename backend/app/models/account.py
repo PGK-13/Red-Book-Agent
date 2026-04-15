@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
+from app.db.session import Base
 from sqlalchemy import (
     ARRAY,
     Boolean,
@@ -20,22 +21,26 @@ from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
-from app.db.session import Base
-
 # ── Enum 定义 ──
 
 access_type_enum = Enum(
-    "oauth", "rpa", "browser",
+    "oauth",
+    "rpa",
+    "browser",
     name="access_type_enum",
 )
 
 account_status_enum = Enum(
-    "active", "suspended", "auth_expired", "banned",
+    "active",
+    "suspended",
+    "auth_expired",
+    "banned",
     name="account_status_enum",
 )
 
 
 # ── Account ──
+
 
 class Account(Base):
     """小红书账号主表。"""
@@ -85,6 +90,7 @@ class Account(Base):
 
 # ── AccountPersona ──
 
+
 class AccountPersona(Base):
     """账号人设配置（一对一）。"""
 
@@ -102,7 +108,9 @@ class AccountPersona(Base):
     tone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     system_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     bio: Mapped[str | None] = mapped_column(Text, nullable=True)
-    tags: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}", nullable=False)
+    tags: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), server_default="{}", nullable=False
+    )
     follower_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     profile_synced_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
@@ -112,6 +120,7 @@ class AccountPersona(Base):
 
 
 # ── ProxyConfig ──
+
 
 class ProxyConfig(Base):
     """代理与设备指纹配置（一对一）。"""

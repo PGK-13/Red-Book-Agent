@@ -1,7 +1,6 @@
+from app.config import settings
 from celery import Celery
 from kombu import Exchange, Queue
-
-from app.config import settings
 
 app = Celery(
     "xhs_worker",
@@ -25,7 +24,7 @@ app.conf.update(
     result_serializer="json",
     timezone="Asia/Shanghai",
     enable_utc=True,
-    task_acks_late=True,           # 任务执行完才 ack，防止丢失
+    task_acks_late=True,  # 任务执行完才 ack，防止丢失
     task_reject_on_worker_lost=True,
     task_max_retries=3,
     task_default_retry_delay=60,

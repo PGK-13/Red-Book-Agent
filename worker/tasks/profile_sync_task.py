@@ -33,11 +33,10 @@ def sync_all_profiles(self) -> dict:
 
 async def _sync_all() -> dict:
     """查询所有 active 账号，逐个调用 AccountService.sync_profile。"""
-    from sqlalchemy import select
-
     from app.db.session import AsyncSessionLocal
     from app.models.account import Account
     from app.services import account_service
+    from sqlalchemy import select
 
     async with AsyncSessionLocal() as db:
         try:
@@ -49,14 +48,10 @@ async def _sync_all() -> dict:
             failed = 0
             for acct in accounts:
                 try:
-                    await account_service.sync_profile(
-                        acct.merchant_id, acct.id, db
-                    )
+                    await account_service.sync_profile(acct.merchant_id, acct.id, db)
                     synced += 1
                 except Exception:
-                    logger.exception(
-                        "Failed to sync profile for account %s", acct.id
-                    )
+                    logger.exception("Failed to sync profile for account %s", acct.id)
                     failed += 1
 
             await db.commit()
