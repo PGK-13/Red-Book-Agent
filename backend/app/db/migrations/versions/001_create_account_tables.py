@@ -6,7 +6,7 @@ Create Date: 2026-04-10
 """
 
 import sqlalchemy as sa
-from alembic import op
+from alembic import op  # pyright: ignore[reportMissingImports]
 from sqlalchemy.dialects.postgresql import ARRAY, TIMESTAMP, UUID
 
 # revision identifiers, used by Alembic.
