@@ -51,14 +51,12 @@ class RiskKeywordCreateRequest(BaseModel):
 class RiskKeywordUpdateRequest(BaseModel):
     """Update a risk keyword."""
 
-    keyword: str | None = Field(None, min_length=1, max_length=128)
-    category: RiskKeywordCategory | None = None
     replacement: str | None = Field(None, max_length=128)
     match_mode: RiskMatchMode | None = None
     severity: RiskSeverity | None = None
     is_active: bool | None = None
 
-    @field_validator("keyword", "replacement")
+    @field_validator("replacement")
     @classmethod
     def strip_optional_text_fields(cls, value: str | None) -> str | None:
         if value is None:
