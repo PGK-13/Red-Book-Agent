@@ -13,23 +13,24 @@ jobs:
 
       - name: Check for sensitive data
         run: |
-          # 检查是否有 token、密钥等敏感信息提交
-          if grep -rE "(github_pat_|ghp_|sk-|password\s*=\s*['\"][^'\"]+['\"])" --include="*.py" --include="*.ts" --include="*.js" --include="*.env" .; then
-            echo "❌ 检测到可能的敏感信息，请检查后重新提交"
+          # Check tracked source files for likely real secrets and avoid common false positives.
+          pattern="(github_pat_[A-Za-z0-9_]{20,}|ghp_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}|password\\s*=\\s*['\\\"][^'\\\"]{8,}['\\\"])"
+          if git grep -nI -E "$pattern" -- '*.py' '*.ts' '*.js' '*.env'; then
+            echo "Sensitive data may have been committed. Please review before merging."
             exit 1
           fi
-          echo "✅ 未检测到敏感信息"
+          echo "No sensitive data patterns detected."
 
       - name: Validate spec docs
         run: |
-          # 检查核心 spec 文件是否存在
+          # Check that required spec docs exist.
           files=(
             ".kiro/specs/architecture.md"
           )
           for f in "${files[@]}"; do
             if [ ! -f "$f" ]; then
-              echo "❌ 缺少文件: $f"
+              echo "Missing file: $f"
               exit 1
             fi
           done
-          echo "✅ Spec 文档完整"
+          echo "Spec docs are complete."
