@@ -1,4 +1,3 @@
-from sqlalchemy.ext.asyncio import AsyncSession
 
 # TODO: 实现互动路由业务逻辑
 # - 评论监听与 OCR 识别

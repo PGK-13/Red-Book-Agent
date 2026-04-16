@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-from typing import cast
 
 from fastapi import APIRouter, Query
 
