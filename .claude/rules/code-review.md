@@ -35,26 +35,88 @@ For each acceptance criterion in the requirements file:
 - Security: encrypted fields use `_enc` suffix, no hardcoded secrets
 - API conventions: response format, error codes, cursor pagination
 
-## Step 5: Post Review Comment
+## Step 5: Post Review Comments (Must Use PR Review Suggestions)
 
-Use `gh pr comment` to post results on the PR:
+**CRITICAL: Every bug must be posted as a SEPARATE PR review comment on the specific file change, using GitHub's `suggestion` syntax.** Comments on the PR body (Issues) are NOT directly applicable by teammates. Each suggestion must be in a separate review comment so teammates can click "Commit suggestion" to apply it directly.
+
+### How to Post Suggestions
+
+Use the GitHub REST API to create multi-comment PR reviews with suggestion blocks:
+
+```python
+import subprocess
+
+reviews = [
+    {
+        "bug_number": 1,
+        "title": "[Bug 1] 简短问题描述",
+        "body": "问题详细说明，包含为什么需要改、会产生什么后果。",
+        "file": "backend/app/models/example.py",
+        "line": 42,
+        "suggestion": """```suggestion
+正确的代码内容
+```""",
+    },
+    # ... more bugs
+]
+
+for bug in reviews:
+    cmd = [
+        "gh", "api", "repos/OWNER/REPO/pulls/16/reviews", "--method", "POST",
+        "--input", "-",
+    ]
+    payload = {
+        "event": "COMMENT",
+        "body": bug["body"],
+        "comments": [{
+            "path": bug["file"],
+            "line": bug["line"],
+            "side": "RIGHT",
+            "body": bug["suggestion"],
+        }],
+    }
+    # post via subprocess or requests
+```
+
+Or use `gh pr review --comment` with heredoc body, one review per bug.
+
+### Comment Format Per Bug
+
+Each bug gets its own review comment containing:
+
+1. **Bug 编号和标题**: `[Bug N] 简短标题`
+2. **问题描述**: 为什么是 bug、会产生什么后果
+3. **文件路径和行号**: 精确到行
+4. **suggestion 代码块**: 可直接 apply 的代码，用 ` ```suggestion` 语法
+
+### Example
 
 ```
-## Review Results: <Module> — <Feature>
+**[Bug 1] operation_log_status_enum 缺少 blocked 值**
 
-### Requirements Coverage
-- [x] <criterion ref>: <what was verified>
-- [ ] <criterion ref>: <issue>
+analytics.py 定义的 enum 只有 ("success", "failed", "skipped")，但 risk_service.py 多处传入 "blocked"，PostgreSQL 写入时会报 enum value 错误。
 
-### Code Quality
-- <issue if any>
+**文件**: backend/app/models/analytics.py:15
 
-### Suggestions
-- <optional improvement ideas>
+suggested change:
+```suggestion
+operation_log_status_enum = Enum(
+    "success",
+    "failed",
+    "skipped",
+    "blocked",
+    "rewrite_required",
+    name="operation_log_status_enum",
+)
+```
+```
 
 ### Verdict
-✅ Pass / ⚠️ Needs Changes / ❌ Block
-```
+
+Use one of:
+- ✅ **Pass** — all requirements met, no blocking issues
+- ⚠️ **Needs Changes** — blocking issues exist, must fix before merge
+- ❌ **Block** — critical security/correctness issues
 
 ## Review Focus Areas by Module
 
