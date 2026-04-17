@@ -10,19 +10,21 @@ import json
 import logging
 import random
 import re
-from hashlib import sha256
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
+from hashlib import sha256
+from typing import Literal, TypedDict
 
-from fastapi import HTTPException, status
-from sqlalchemy import and_, case, or_, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.core.rate_limiter import get_redis
 from app.core.notifications import send_alert
-from app.models.analytics import Alert, OperationLog
+from app.core.rate_limiter import get_redis
 from app.models.account import Account
-from app.models.risk import AccountRiskConfig, ReplyHistory, RiskKeyword
+from app.models.risk import (
+    AccountRiskConfig,
+    Alert,
+    OperationLog,
+    ReplyHistory,
+    RiskKeyword,
+)
 from app.schemas.risk import (
     AccountRiskScheduleRequest,
     RiskHitResponse,
@@ -30,22 +32,37 @@ from app.schemas.risk import (
     RiskKeywordUpdateRequest,
     RiskScanResponse,
 )
+from fastapi import HTTPException, status
+from sqlalchemy import and_, case, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
 REPLY_HISTORY_CACHE_SIZE = 100
 REPLY_HISTORY_CACHE_TTL_SECONDS = 86400
 
+RiskOperationStatus = Literal["success", "blocked", "rewrite_required", "manual_review"]
+
+
+class QuotaRule(TypedDict):
+    merchant_id: str
+    limit: int
+    bucket: str
+    ttl_seconds: int
+
 
 async def log_risk_event(
+    merchant_id: str,
     account_id: str,
     operation_type: str,
-    status: str,
+    status: RiskOperationStatus,
     risk_decision: str,
     violations: list[str],
     db: AsyncSession,
     detail: dict | None = None,
     error_code: str | None = None,
+    content_snapshot: str | None = None,
+    source_record_id: str | None = None,
 ) -> OperationLog:
     """Persist a risk control operation log entry."""
 
@@ -57,15 +74,47 @@ async def log_risk_event(
         payload.update(detail)
 
     event = OperationLog(
+        merchant_id=merchant_id,
         account_id=account_id,
         operation_type=operation_type,
         status=status,
+        content_snapshot=content_snapshot,
+        risk_reason=_build_risk_reason(
+            risk_decision=risk_decision,
+            detail=detail,
+            error_code=error_code,
+        ),
         detail=payload,
         error_code=error_code,
+        source_record_id=source_record_id,
     )
     db.add(event)
     await db.flush()
     return event
+
+
+def _build_risk_reason(
+    risk_decision: str,
+    detail: dict | None,
+    error_code: str | None,
+) -> str:
+    if error_code:
+        return error_code
+    if detail is not None and isinstance(detail.get("reason"), str):
+        return detail["reason"]
+    return risk_decision
+
+
+def _decision_to_log_status(decision: str) -> RiskOperationStatus:
+    if decision == "blocked":
+        return "blocked"
+    if decision == "rewrite_required":
+        return "rewrite_required"
+    if decision == "manual_review":
+        return "manual_review"
+    if decision == "passed":
+        return "success"
+    raise ValueError(f"Unsupported risk decision for operation log status: {decision}")
 
 
 async def emit_alert_if_needed(
@@ -73,12 +122,14 @@ async def emit_alert_if_needed(
     alert_type: str,
     message: str,
     db: AsyncSession,
+    account_id: str | None = None,
     severity: str = "warning",
 ) -> Alert:
     """Persist an alert record and dispatch the notification hook."""
 
     alert = await _create_alert_record(
         merchant_id=merchant_id,
+        account_id=account_id,
         alert_type=alert_type,
         message=message,
         severity=severity,
@@ -95,6 +146,7 @@ async def emit_alert_if_needed(
 
 async def _create_alert_record(
     merchant_id: str,
+    account_id: str | None,
     alert_type: str,
     message: str,
     severity: str,
@@ -102,6 +154,7 @@ async def _create_alert_record(
 ) -> Alert:
     alert = Alert(
         merchant_id=merchant_id,
+        account_id=account_id,
         alert_type=alert_type,
         module="E",
         severity=severity,
@@ -179,7 +232,9 @@ async def update_keyword(
 ) -> RiskKeyword:
     """Update a merchant-owned risk keyword."""
 
-    keyword = await _get_merchant_keyword(merchant_id=merchant_id, keyword_id=keyword_id, db=db)
+    keyword = await _get_merchant_keyword(
+        merchant_id=merchant_id, keyword_id=keyword_id, db=db
+    )
 
     updates = data.model_dump(exclude_unset=True)
     next_keyword = updates.get("keyword", keyword.keyword)
@@ -208,7 +263,9 @@ async def delete_keyword(
 ) -> None:
     """Delete a merchant-owned risk keyword."""
 
-    keyword = await _get_merchant_keyword(merchant_id=merchant_id, keyword_id=keyword_id, db=db)
+    keyword = await _get_merchant_keyword(
+        merchant_id=merchant_id, keyword_id=keyword_id, db=db
+    )
     await db.delete(keyword)
     await db.flush()
 
@@ -430,7 +487,9 @@ async def scan_input(
         db=db,
     )
 
-    hits = await scan_sensitive_keywords(content=content, merchant_id=merchant_id, db=db)
+    hits = await scan_sensitive_keywords(
+        content=content, merchant_id=merchant_id, db=db
+    )
     competitor_hits = await scan_competitor_keywords(
         content=content,
         merchant_id=merchant_id,
@@ -456,6 +515,7 @@ async def scan_input(
             [hit.keyword for hit in hits],
         )
         await log_risk_event(
+            merchant_id=merchant_id,
             account_id=account_id,
             operation_type=scene,
             status="success",
@@ -475,6 +535,7 @@ async def scan_input(
         )
         await _create_alert_record(
             merchant_id=merchant_id,
+            account_id=account_id,
             alert_type="inbound_risk_hit",
             message=f"Account {account_id} detected inbound risk content in {scene}",
             severity="warning",
@@ -488,6 +549,7 @@ async def scan_input(
             scene,
         )
         await log_risk_event(
+            merchant_id=merchant_id,
             account_id=account_id,
             operation_type=scene,
             status="success",
@@ -526,12 +588,15 @@ async def scan_output(
         db=db,
     )
 
-    rest_decision = await _check_rest_window_for_output(account_id=account_id, scene=scene, db=db)
+    rest_decision = await _check_rest_window_for_output(
+        account_id=account_id, scene=scene, db=db
+    )
     if rest_decision is not None:
         await log_risk_event(
+            merchant_id=merchant_id,
             account_id=account_id,
             operation_type=scene,
-            status="failed",
+            status="blocked",
             risk_decision=rest_decision.decision,
             violations=[],
             detail={"reason": "rest_window"},
@@ -540,12 +605,15 @@ async def scan_output(
         )
         return rest_decision
 
-    quota_decision = await _check_quota_for_output(account_id=account_id, scene=scene, db=db)
+    quota_decision = await _check_quota_for_output(
+        account_id=account_id, scene=scene, db=db
+    )
     if quota_decision is not None:
         await log_risk_event(
+            merchant_id=merchant_id,
             account_id=account_id,
             operation_type=scene,
-            status="failed",
+            status="blocked",
             risk_decision=quota_decision.decision,
             violations=[],
             detail={"reason": "quota_exceeded"},
@@ -554,13 +622,16 @@ async def scan_output(
         )
         return quota_decision
 
-    hits = await scan_sensitive_keywords(content=content, merchant_id=merchant_id, db=db)
+    hits = await scan_sensitive_keywords(
+        content=content, merchant_id=merchant_id, db=db
+    )
     keyword_decision = _build_keyword_decision(hits=hits)
     if keyword_decision is not None:
         await log_risk_event(
+            merchant_id=merchant_id,
             account_id=account_id,
             operation_type=scene,
-            status="failed" if keyword_decision.decision == "blocked" else "skipped",
+            status=_decision_to_log_status(keyword_decision.decision),
             risk_decision=keyword_decision.decision,
             violations=_extract_hit_keywords(hits),
             detail={"reason": "sensitive_keywords"},
@@ -578,9 +649,10 @@ async def scan_output(
     )
     if competitor_decision is not None:
         await log_risk_event(
+            merchant_id=merchant_id,
             account_id=account_id,
             operation_type=scene,
-            status="skipped",
+            status=_decision_to_log_status(competitor_decision.decision),
             risk_decision=competitor_decision.decision,
             violations=_extract_hit_keywords(competitor_decision.hits),
             detail={"reason": "competitor_keywords"},
@@ -597,9 +669,10 @@ async def scan_output(
     )
     if similarity_decision is not None:
         await log_risk_event(
+            merchant_id=merchant_id,
             account_id=account_id,
             operation_type=scene,
-            status="skipped",
+            status=_decision_to_log_status(similarity_decision.decision),
             risk_decision=similarity_decision.decision,
             violations=[],
             detail={
@@ -617,6 +690,7 @@ async def scan_output(
         return similarity_decision
 
     await log_risk_event(
+        merchant_id=merchant_id,
         account_id=account_id,
         operation_type=scene,
         status="success",
@@ -653,11 +727,13 @@ async def update_account_schedule(
 
     if config is None:
         config = AccountRiskConfig(
+            merchant_id=merchant_id,
             account_id=account_id,
             rest_windows=data.rest_windows,
         )
         db.add(config)
     else:
+        config.merchant_id = merchant_id
         config.rest_windows = data.rest_windows
 
     await db.flush()
@@ -790,7 +866,9 @@ async def _check_similarity_for_output(
     if scene not in {"comment_reply", "dm_send"}:
         return None
 
-    similarity_result = await detect_similarity(account_id=account_id, candidate=content, db=db)
+    similarity_result = await detect_similarity(
+        account_id=account_id, candidate=content, db=db
+    )
     if similarity_result is None:
         return None
     return RiskScanResponse(
@@ -932,6 +1010,7 @@ async def _track_competitor_hits(
     if total > threshold:
         await emit_alert_if_needed(
             merchant_id=merchant_id,
+            account_id=account_id,
             alert_type="competitor_hits_abnormal",
             message=(
                 f"账号 {account_id} 1 小时内竞品命中次数异常升高，"
@@ -961,7 +1040,9 @@ async def check_and_reserve_quota(
 
     quota_rule = await _get_quota_rule(account_id=account_id, action=action, db=db)
     redis = get_redis()
-    key = _build_quota_key(account_id=account_id, action=action, bucket=quota_rule["bucket"])
+    key = _build_quota_key(
+        account_id=account_id, action=action, bucket=quota_rule["bucket"]
+    )
 
     count = await redis.incr(key)
     if count == 1:
@@ -979,6 +1060,7 @@ async def check_and_reserve_quota(
 
     await emit_alert_if_needed(
         merchant_id=quota_rule["merchant_id"],
+        account_id=account_id,
         alert_type="risk_quota_exceeded",
         message=(
             f"账号 {account_id} 的 {action} 频率已超过阈值 "
@@ -1001,7 +1083,7 @@ async def _get_quota_rule(
     account_id: str,
     action: str,
     db: AsyncSession,
-) -> dict[str, str | int]:
+) -> QuotaRule:
     if action not in {"comment_reply", "dm_send", "note_publish"}:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1028,9 +1110,7 @@ async def _get_quota_rule(
         return {
             "merchant_id": account.merchant_id,
             "limit": (
-                config.comment_reply_limit_per_hour
-                if config is not None
-                else 20
+                config.comment_reply_limit_per_hour if config is not None else 20
             ),
             "bucket": now.strftime("%Y%m%d%H"),
             "ttl_seconds": 3600,
@@ -1038,21 +1118,13 @@ async def _get_quota_rule(
     if action == "dm_send":
         return {
             "merchant_id": account.merchant_id,
-            "limit": (
-                config.dm_send_limit_per_hour
-                if config is not None
-                else 50
-            ),
+            "limit": (config.dm_send_limit_per_hour if config is not None else 50),
             "bucket": now.strftime("%Y%m%d%H"),
             "ttl_seconds": 3600,
         }
     return {
         "merchant_id": account.merchant_id,
-        "limit": (
-            config.note_publish_limit_per_day
-            if config is not None
-            else 3
-        ),
+        "limit": (config.note_publish_limit_per_day if config is not None else 3),
         "bucket": now.strftime("%Y%m%d"),
         "ttl_seconds": 86400,
     }
@@ -1069,7 +1141,9 @@ async def _get_rest_windows(account_id: str, db: AsyncSession) -> list[str]:
     if cached:
         return json.loads(cached)
 
-    stmt = select(AccountRiskConfig.rest_windows).where(AccountRiskConfig.account_id == account_id)
+    stmt = select(AccountRiskConfig.rest_windows).where(
+        AccountRiskConfig.account_id == account_id
+    )
     result = await db.execute(stmt)
     rest_windows = result.scalar_one_or_none() or []
     await _cache_rest_windows(account_id=account_id, rest_windows=rest_windows)
@@ -1094,6 +1168,13 @@ def _to_minute_of_day(now: datetime) -> int:
 
 
 def _minute_in_window(minute_of_day: int, window: str) -> bool:
+    """Check whether a minute-of-day falls within a configured time window.
+
+    Window format is "HH:MM-HH:MM". When start < end it is a normal same-day
+    window, when start > end it spans across midnight, and when start == end it
+    represents an all-day window.
+    """
+
     start_text, end_text = window.split("-")
     start = _hhmm_to_minute(start_text)
     end = _hhmm_to_minute(end_text)
@@ -1118,7 +1199,7 @@ def inject_variants(content: str) -> str:
         return updated
 
     replacements = {
-        "您好": "你呀好",
+        "您好": "你好",
         "谢谢": "感谢",
         "可以": "能够",
         "马上": "尽快",
@@ -1130,7 +1211,11 @@ def inject_variants(content: str) -> str:
             updated = updated.replace(source, target, 1)
             break
 
-    segments = [segment.strip() for segment in re.split(r"[，,。.!！？?]", updated) if segment.strip()]
+    segments = [
+        segment.strip()
+        for segment in re.split(r"[，,。.!！？?]", updated)
+        if segment.strip()
+    ]
     if len(segments) >= 2:
         updated = "，".join([segments[1], segments[0], *segments[2:]])
 
@@ -1267,7 +1352,9 @@ async def _load_recent_reply_history_summaries(
         if cached_items:
             return [json.loads(item) for item in cached_items]
     except Exception:
-        logger.warning("Failed to read reply history cache account=%s", account_id, exc_info=True)
+        logger.warning(
+            "Failed to read reply history cache account=%s", account_id, exc_info=True
+        )
 
     stmt = (
         select(ReplyHistory)
@@ -1299,7 +1386,9 @@ async def _push_reply_history_summary_to_cache(history: ReplyHistory) -> None:
         )
 
 
-async def _replace_reply_history_cache(account_id: str, summaries: list[dict[str, str]]) -> None:
+async def _replace_reply_history_cache(
+    account_id: str, summaries: list[dict[str, str]]
+) -> None:
     try:
         redis = get_redis()
         cache_key = _build_reply_history_cache_key(account_id)
@@ -1308,7 +1397,11 @@ async def _replace_reply_history_cache(account_id: str, summaries: list[dict[str
             await redis.rpush(cache_key, *[json.dumps(item) for item in summaries])
             await redis.expire(cache_key, REPLY_HISTORY_CACHE_TTL_SECONDS)
     except Exception:
-        logger.warning("Failed to rebuild reply history cache account=%s", account_id, exc_info=True)
+        logger.warning(
+            "Failed to rebuild reply history cache account=%s",
+            account_id,
+            exc_info=True,
+        )
 
 
 def _reply_history_to_summary(history: ReplyHistory) -> dict[str, str]:
@@ -1337,7 +1430,9 @@ async def scan(content: str, merchant_id: str, db: AsyncSession) -> dict:
     Task 3.2 now covers only sensitive keyword scanning. Other checks stay for
     later tasks.
     """
-    hits = await scan_sensitive_keywords(content=content, merchant_id=merchant_id, db=db)
+    hits = await scan_sensitive_keywords(
+        content=content, merchant_id=merchant_id, db=db
+    )
     return {
         "passed": not hits,
         "violations": [hit.keyword for hit in hits],

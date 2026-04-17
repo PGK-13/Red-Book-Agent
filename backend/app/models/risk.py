@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
+from app.db.session import Base
 from sqlalchemy import (
     ARRAY,
     Boolean,
@@ -17,11 +18,9 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
+from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
-
-from app.db.session import Base
 
 risk_keyword_category_enum = Enum(
     "platform_banned",
@@ -132,9 +131,7 @@ class AccountRiskConfig(Base):
     """Per-account risk control configuration."""
 
     __tablename__ = "account_risk_configs"
-    __table_args__ = (
-        Index("ix_account_risk_configs_merchant_id", "merchant_id"),
-    )
+    __table_args__ = (Index("ix_account_risk_configs_merchant_id", "merchant_id"),)
 
     id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
@@ -247,6 +244,8 @@ class OperationLog(Base):
     )
     content_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
     risk_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    detail: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    error_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
     source_record_id: Mapped[str | None] = mapped_column(
         UUID(as_uuid=False),
         nullable=True,
@@ -275,6 +274,7 @@ class Alert(Base):
         ForeignKey("accounts.id", ondelete="CASCADE"),
         nullable=True,
     )
+    alert_type: Mapped[str] = mapped_column(String(64), nullable=False)
     module: Mapped[str] = mapped_column(String(64), nullable=False)
     severity: Mapped[str] = mapped_column(
         alert_severity_enum,

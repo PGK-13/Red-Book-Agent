@@ -2,23 +2,27 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from unittest.mock import AsyncMock, patch
-
-from app.models.analytics import Alert, OperationLog
 from app.models.account import Account
-from app.models.risk import AccountRiskConfig, ReplyHistory, RiskKeyword
+from app.models.risk import (
+    AccountRiskConfig,
+    Alert,
+    OperationLog,
+    ReplyHistory,
+    RiskKeyword,
+)
 from app.schemas.risk import (
     AccountRiskScheduleRequest,
     RiskKeywordCreateRequest,
     RiskKeywordUpdateRequest,
 )
 from app.services import risk_service
+from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class TestRiskKeywordManagement:
@@ -128,7 +132,9 @@ class TestRiskKeywordManagement:
             await risk_service.update_keyword(
                 merchant_id,
                 second.id,
-                RiskKeywordUpdateRequest(keyword=first.keyword, category=first.category),
+                RiskKeywordUpdateRequest(
+                    keyword=first.keyword, category=first.category
+                ),
                 db,
             )
 
@@ -232,7 +238,9 @@ class TestSensitiveKeywordScan:
             db,
         )
 
-        assert [(item.keyword, item.start, item.end, item.severity) for item in hits] == [
+        assert [
+            (item.keyword, item.start, item.end, item.severity) for item in hits
+        ] == [
             ("forbidden", 0, 9, "block"),
             ("promo", 10, 15, "warn"),
         ]
@@ -269,7 +277,9 @@ class TestSensitiveKeywordScan:
         )
         await db.flush()
 
-        hits = await risk_service.scan_sensitive_keywords("flash sale today", merchant_id, db)
+        hits = await risk_service.scan_sensitive_keywords(
+            "flash sale today", merchant_id, db
+        )
 
         assert len(hits) == 1
         assert hits[0].keyword == "sale"
@@ -295,7 +305,9 @@ class TestSensitiveKeywordScan:
         )
         await db.flush()
 
-        hits = await risk_service.scan_sensitive_keywords("bramd mention", merchant_id, db)
+        hits = await risk_service.scan_sensitive_keywords(
+            "bramd mention", merchant_id, db
+        )
 
         assert len(hits) == 1
         assert hits[0].keyword == "brand"
@@ -370,7 +382,9 @@ class TestInboundRiskScan:
         )
         await db.flush()
 
-        with patch("app.services.risk_service.send_alert", new=AsyncMock()) as mocked_alert:
+        with patch(
+            "app.services.risk_service.send_alert", new=AsyncMock()
+        ) as mocked_alert:
             result = await risk_service.scan_input(
                 merchant_id=merchant_id,
                 account_id=account.id,
@@ -388,12 +402,14 @@ class TestInboundRiskScan:
         log_result = await db.execute(select(OperationLog))
         logs = log_result.scalars().all()
         assert len(logs) == 1
+        assert logs[0].merchant_id == merchant_id
         assert logs[0].operation_type == "comment_inbound"
         assert logs[0].detail["violations"] == ["forbidden"]
 
         alert_result = await db.execute(select(Alert))
         alerts = alert_result.scalars().all()
         assert len(alerts) == 1
+        assert alerts[0].account_id == account.id
         assert alerts[0].alert_type == "inbound_risk_hit"
         assert alerts[0].module == "E"
 
@@ -414,7 +430,9 @@ class TestInboundRiskScan:
         db.add(account)
         await db.flush()
 
-        with patch("app.services.risk_service.send_alert", new=AsyncMock()) as mocked_alert:
+        with patch(
+            "app.services.risk_service.send_alert", new=AsyncMock()
+        ) as mocked_alert:
             result = await risk_service.scan_input(
                 merchant_id=merchant_id,
                 account_id=account.id,
@@ -519,7 +537,7 @@ class TestOutboundRiskScan:
         log_result = await db.execute(select(OperationLog))
         logs = log_result.scalars().all()
         assert len(logs) == 1
-        assert logs[0].status == "failed"
+        assert logs[0].status == "blocked"
         assert logs[0].detail["risk_decision"] == "blocked"
         assert logs[0].detail["violations"] == ["forbidden"]
 
@@ -563,6 +581,12 @@ class TestOutboundRiskScan:
         assert result.decision == "rewrite_required"
         assert len(result.hits) == 1
         assert result.retryable is True
+
+        log_result = await db.execute(select(OperationLog))
+        logs = log_result.scalars().all()
+        assert len(logs) == 1
+        assert logs[0].status == "rewrite_required"
+        assert logs[0].detail["risk_decision"] == "rewrite_required"
 
     @pytest.mark.asyncio
     async def test_scan_output_returns_passed_when_checks_are_clean(
@@ -639,6 +663,7 @@ class TestOutboundRiskScan:
         log_result = await db.execute(select(OperationLog))
         logs = log_result.scalars().all()
         assert len(logs) == 1
+        assert logs[0].status == "blocked"
         assert logs[0].error_code == "rest_window_blocked"
         assert logs[0].detail["reason"] == "rest_window"
 
@@ -708,6 +733,7 @@ class TestQuotaReservation:
         db.add(account)
         db.add(
             AccountRiskConfig(
+                merchant_id=merchant_id,
                 account_id=account.id,
                 comment_reply_limit_per_hour=2,
                 dm_send_limit_per_hour=9,
@@ -745,6 +771,7 @@ class TestQuotaReservation:
         db.add(account)
         db.add(
             AccountRiskConfig(
+                merchant_id=merchant_id,
                 account_id=account.id,
                 comment_reply_limit_per_hour=1,
                 dm_send_limit_per_hour=50,
@@ -772,6 +799,7 @@ class TestQuotaReservation:
         alert_result = await db.execute(select(Alert))
         alerts = alert_result.scalars().all()
         assert len(alerts) == 1
+        assert alerts[0].account_id == account.id
         assert alerts[0].alert_type == "risk_quota_exceeded"
 
     @pytest.mark.asyncio
@@ -840,7 +868,9 @@ class TestRestWindowSchedule:
             config = await risk_service.update_account_schedule(
                 merchant_id=merchant_id,
                 account_id=account.id,
-                data=AccountRiskScheduleRequest(rest_windows=["00:00-08:00", "13:00-14:00"]),
+                data=AccountRiskScheduleRequest(
+                    rest_windows=["00:00-08:00", "13:00-14:00"]
+                ),
                 db=db,
             )
 
@@ -882,6 +912,7 @@ class TestRestWindowSchedule:
         db.add(account)
         db.add(
             AccountRiskConfig(
+                merchant_id=merchant_id,
                 account_id=account.id,
                 rest_windows=["23:00-02:00"],
             )
@@ -900,6 +931,14 @@ class TestRestWindowSchedule:
 
         assert in_window is True
         redis.setex.assert_awaited_once()
+
+    def test_minute_in_window_handles_cross_midnight_and_all_day_boundaries(
+        self,
+    ) -> None:
+        assert risk_service._minute_in_window(60, "23:00-02:00") is True
+        assert risk_service._minute_in_window(600, "23:00-02:00") is False
+        assert risk_service._minute_in_window(0, "00:00-00:00") is True
+        assert risk_service._minute_in_window(1439, "00:00-00:00") is True
 
     @pytest.mark.asyncio
     async def test_scan_output_returns_blocked_when_in_rest_window(
@@ -974,6 +1013,8 @@ class TestSimilarityDetection:
 
         assert updated != content
         assert updated
+        assert "你呀好" not in updated
+        assert "你好" in updated
 
     @pytest.mark.asyncio
     async def test_detect_similarity_returns_match_when_above_default_threshold(
@@ -1031,6 +1072,7 @@ class TestSimilarityDetection:
         db.add(account)
         db.add(
             AccountRiskConfig(
+                merchant_id=merchant_id,
                 account_id=account.id,
                 dedup_similarity_threshold=0.99,
             )
@@ -1139,7 +1181,10 @@ class TestSimilarityDetection:
         await db.refresh(history)
 
         assert history.content == "Thanks for your message, we will follow up soon."
-        assert history.normalized_content == "thanks for your message we will follow up soon"
+        assert (
+            history.normalized_content
+            == "thanks for your message we will follow up soon"
+        )
         assert history.similarity_hash
         redis.lpush.assert_awaited_once()
         redis.ltrim.assert_awaited_once_with(
@@ -1355,6 +1400,7 @@ class TestCompetitorDetection:
         db.add(account)
         db.add(
             AccountRiskConfig(
+                merchant_id=merchant_id,
                 account_id=account.id,
                 competitor_alert_threshold_per_hour=10,
             )
@@ -1381,4 +1427,5 @@ class TestCompetitorDetection:
         alert_result = await db.execute(select(Alert))
         alerts = alert_result.scalars().all()
         assert len(alerts) == 1
+        assert alerts[0].account_id == account.id
         assert alerts[0].alert_type == "competitor_hits_abnormal"

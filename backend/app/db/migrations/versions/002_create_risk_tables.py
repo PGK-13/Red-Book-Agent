@@ -5,9 +5,9 @@ Revises: 001_account_tables
 Create Date: 2026-04-11
 """
 
-from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import ARRAY, TIMESTAMP, UUID
+from alembic import op
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TIMESTAMP, UUID
 
 # revision identifiers, used by Alembic.
 revision = "002_risk_tables"
@@ -213,6 +213,13 @@ def upgrade() -> None:
         sa.Column("status", operation_status_enum, nullable=False),
         sa.Column("content_snapshot", sa.Text, nullable=True),
         sa.Column("risk_reason", sa.Text, nullable=True),
+        sa.Column(
+            "detail",
+            JSONB,
+            nullable=False,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
+        sa.Column("error_code", sa.String(32), nullable=True),
         sa.Column("source_record_id", UUID(as_uuid=False), nullable=True),
         sa.Column(
             "created_at",
@@ -237,6 +244,7 @@ def upgrade() -> None:
             sa.ForeignKey("accounts.id", ondelete="CASCADE"),
             nullable=True,
         ),
+        sa.Column("alert_type", sa.String(64), nullable=False),
         sa.Column("module", sa.String(64), nullable=False),
         sa.Column("severity", alert_severity_enum, nullable=False),
         sa.Column("message", sa.Text, nullable=False),
@@ -288,9 +296,7 @@ def downgrade() -> None:
     op.drop_index("ix_risk_keywords_merchant_id", table_name="risk_keywords")
     op.drop_table("risk_keywords")
 
-    sa.Enum(name="reply_history_source_type_enum").drop(
-        op.get_bind(), checkfirst=True
-    )
+    sa.Enum(name="reply_history_source_type_enum").drop(op.get_bind(), checkfirst=True)
     sa.Enum(name="alert_severity_enum").drop(op.get_bind(), checkfirst=True)
     sa.Enum(name="operation_status_enum").drop(op.get_bind(), checkfirst=True)
     sa.Enum(name="operation_type_enum").drop(op.get_bind(), checkfirst=True)

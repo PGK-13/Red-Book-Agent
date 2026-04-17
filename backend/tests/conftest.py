@@ -5,26 +5,26 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
 import inspect
+from collections.abc import AsyncGenerator
 
 import pytest
 import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
-from sqlalchemy.pool import NullPool
-
 from app.config import settings
 from app.core import rate_limiter
 from app.db.session import Base
-from app.models.analytics import Alert, OperationLog  # noqa: F401
 from app.models.account import Account, AccountPersona, ProxyConfig  # noqa: F401
-from app.models.risk import AccountRiskConfig, ReplyHistory, RiskKeyword  # noqa: F401
+from app.models.risk import (  # noqa: F401
+    AccountRiskConfig,
+    Alert,
+    OperationLog,
+    ReplyHistory,
+    RiskKeyword,
+)
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 
 def _get_test_database_url() -> str:
