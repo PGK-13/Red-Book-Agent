@@ -6,43 +6,102 @@
 
 ### 前置依赖
 
-- Docker & Docker Compose
+- Docker / Docker Compose
 - Python 3.12+
 - Node.js 20+
 
-### 1. 启动本地基础设施
+### Phase 1 容器化启动
+
+Phase 1 已将数据库迁移纳入 Docker 启动流程。首次启动或删除数据库卷后，推荐直接使用：
 
 ```bash
 cp infra/.env.example .env
-docker-compose -f infra/docker-compose.yml up -d
+docker compose -f infra/docker-compose.yml up --build
 ```
 
-服务启动后：
+启动顺序如下：
+
+1. PostgreSQL / Redis / RabbitMQ / Qdrant 启动并通过健康检查
+2. `migrate` 服务自动执行 `python -m app.db.migrations_runner upgrade head`
+3. `backend` 与 `worker` 在迁移成功后启动
+
+启动后可访问：
+
+- Backend API: `http://localhost:8000`
+- API Docs: `http://localhost:8000/docs`
 - PostgreSQL: `localhost:5432`
 - Redis: `localhost:6379`
-- RabbitMQ: `localhost:5672`（管理界面：http://localhost:15672）
-- Qdrant: `localhost:6333`（API 文档：http://localhost:6333/dashboard）
+- RabbitMQ: `localhost:5672`
+- RabbitMQ 管理界面: `http://localhost:15672`
+- Qdrant: `http://localhost:6333`
 
-### 2. 启动后端
+### 空库验收
+
+Phase 1 的空库验收脚本已经补齐。删除数据库卷后，可按下面流程验证模块 E 的关键落库链路：
+
+```bash
+docker compose -f infra/docker-compose.yml down -v
+docker compose -f infra/docker-compose.yml up --build -d
+docker compose -f infra/docker-compose.yml --profile verify run --rm risk-bootstrap-check
+```
+
+验收脚本会在空库环境中：
+
+- 通过 Alembic 初始化数据库
+- 写入测试账号与风险词
+- 执行一次模块 E 入站扫描
+- 校验 `operation_logs` 与 `alerts` 已成功落库
+
+更详细的操作说明见 [docs/phase1-empty-db-acceptance.md](docs/phase1-empty-db-acceptance.md)。
+
+### Phase 2 Smoke 验收
+
+模块 E 的 Phase 2 最小闭环也已补充为可执行 smoke 验收：
+
+```bash
+docker compose -f infra/docker-compose.yml up --build -d
+docker compose -f infra/docker-compose.yml --profile verify run --rm risk-phase2-smoke-check
+```
+
+该验收会覆盖：
+
+- 内容侧 `rewrite -> rescan`
+- 互动侧 `blocked -> passed -> persist_reply_history`
+- `operation_logs` 与 `reply_histories` 的关键落库
+
+详细说明见 [docs/phase2-smoke-acceptance.md](docs/phase2-smoke-acceptance.md)。
+
+### 风控性能基线
+
+模块 E 现已提供容器环境下的性能基线脚本，用于测量 `scan_sensitive_keywords` 与 `scan_output` 的 `P50 / P95`：
+
+```bash
+docker compose -f infra/docker-compose.yml up --build -d
+docker compose -f infra/docker-compose.yml --profile verify run --rm risk-performance-benchmark
+```
+
+脚本会输出 JSON 结果，详细说明见 [docs/module-e-risk-performance-baseline.md](docs/module-e-risk-performance-baseline.md)。
+
+### 本地后端开发
 
 ```bash
 cd backend
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+python -m app.db.migrations_runner upgrade head
 uvicorn app.main:app --reload
 ```
 
-API 文档：http://localhost:8000/docs
-
-### 3. 启动 Celery Worker
+### 本地 Worker
 
 ```bash
-cd worker
-celery -A celery_app worker --loglevel=info
+cd backend
+python -m app.db.migrations_runner upgrade head
+celery -A worker.celery_app:app worker --loglevel=info
 ```
 
-### 4. 启动前端
+### 前端开发
 
 ```bash
 cd frontend
@@ -50,20 +109,23 @@ npm install
 npm run dev
 ```
 
-前端：http://localhost:3000
+## 测试
+
+模块 E 的 Phase 1 新增了一条只依赖 Alembic 的测试链路，用于阻止 ORM / 迁移 / 服务写入再次漂移：
+
+```bash
+docker compose -f infra/docker-compose.test.yml up -d
+cd backend
+pytest tests/test_risk_alembic_path.py
+```
 
 ## 项目结构
 
+```text
+backend/   FastAPI 后端
+frontend/  Next.js 前端
+agent/     LangGraph Agent 核心
+worker/    Celery 异步任务
+infra/     基础设施与容器编排
+docs/      任务与验收文档
 ```
-├── backend/      # FastAPI 后端
-├── frontend/     # Next.js 前端
-├── agent/        # LangGraph Agent 核心
-├── worker/       # Celery 异步任务
-└── infra/        # 基础设施配置
-```
-
-详细架构设计见 `.kiro/specs/architecture.md`。
-
-## 开发规范
-
-见 `.kiro/steering/` 目录下各规范文件。

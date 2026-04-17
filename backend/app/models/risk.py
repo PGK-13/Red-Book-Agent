@@ -23,6 +23,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.db.session import Base
+from app.models.analytics import Alert, OperationLog
 
 risk_keyword_category_enum = Enum(
     "platform_banned",
@@ -50,31 +51,6 @@ reply_history_source_type_enum = Enum(
     "dm_send",
     name="reply_history_source_type_enum",
 )
-
-operation_type_enum = Enum(
-    "note_publish",
-    "comment_reply",
-    "dm_send",
-    "comment_inbound",
-    "dm_inbound",
-    name="operation_type_enum",
-)
-
-operation_status_enum = Enum(
-    "success",
-    "blocked",
-    "rewrite_required",
-    "manual_review",
-    name="operation_status_enum",
-)
-
-alert_severity_enum = Enum(
-    "info",
-    "warning",
-    "critical",
-    name="alert_severity_enum",
-)
-
 
 class RiskKeyword(Base):
     """System-level and merchant-level risk keywords."""
@@ -219,90 +195,8 @@ class ReplyHistory(Base):
     )
 
 
-class OperationLog(Base):
-    """Audit trail for outbound and inbound risk-related operations."""
-
-    __tablename__ = "operation_logs"
-
-    id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
-    )
-    merchant_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False),
-        nullable=False,
-    )
-    account_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False),
-        ForeignKey("accounts.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    operation_type: Mapped[str] = mapped_column(
-        operation_type_enum,
-        nullable=False,
-    )
-    status: Mapped[str] = mapped_column(
-        operation_status_enum,
-        nullable=False,
-    )
-    content_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
-    risk_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    source_record_id: Mapped[str | None] = mapped_column(
-        UUID(as_uuid=False),
-        nullable=True,
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True),
-        server_default=func.now(),
-        nullable=False,
-    )
-
-
-class Alert(Base):
-    """Risk alerts emitted for merchant or account level incidents."""
-
-    __tablename__ = "alerts"
-
-    id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
-    )
-    merchant_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False),
-        nullable=False,
-    )
-    account_id: Mapped[str | None] = mapped_column(
-        UUID(as_uuid=False),
-        ForeignKey("accounts.id", ondelete="CASCADE"),
-        nullable=True,
-    )
-    module: Mapped[str] = mapped_column(String(64), nullable=False)
-    severity: Mapped[str] = mapped_column(
-        alert_severity_enum,
-        nullable=False,
-    )
-    message: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True),
-        server_default=func.now(),
-        nullable=False,
-    )
-
-
 Index(
     "ix_reply_histories_account_created_at",
     ReplyHistory.account_id,
     ReplyHistory.created_at.desc(),
-)
-
-Index(
-    "ix_operation_logs_account_type_created_at",
-    OperationLog.account_id,
-    OperationLog.operation_type,
-    OperationLog.created_at.desc(),
-)
-
-Index(
-    "ix_alerts_merchant_module_created_at",
-    Alert.merchant_id,
-    Alert.module,
-    Alert.created_at.desc(),
 )

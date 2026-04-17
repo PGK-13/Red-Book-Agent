@@ -23,16 +23,23 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import NullPool
 
-from app.config import settings as app_settings
 from app.core.security import decrypt, encrypt
 from app.models.account import Account, AccountPersona, ProxyConfig
 from app.services import account_service
+from tests.conftest import _get_test_database_url
 
 
 def _make_session_factory() -> async_sessionmaker:
     """创建独立的 session factory，每个 Hypothesis example 使用独立连接。"""
     engine = create_async_engine(
-        app_settings.database_url, echo=False, poolclass=NullPool
+        _get_test_database_url(),
+        echo=False,
+        poolclass=NullPool,
+        connect_args={
+            "timeout": 5,
+            "command_timeout": 5,
+            "server_settings": {"application_name": "pytest"},
+        },
     )
     return async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -96,6 +103,8 @@ class TestOAuthTokenEncryption:
 
 
 class TestCookieExpiryWarning:
+    pytestmark = pytest.mark.requires_db
+
     """验证 Cookie 距过期 < 24h 时触发通知，≥ 24h 时不触发。"""
 
     @pytest.mark.asyncio
@@ -177,6 +186,8 @@ class TestCookieExpiryWarning:
 
 
 class TestCookieExpiredStatusTransition:
+    pytestmark = pytest.mark.requires_db
+
     """验证 Cookie 已过期时账号状态变为 auth_expired。"""
 
     @pytest.mark.asyncio
@@ -253,6 +264,8 @@ class TestProxyIPBindingConsistency:
 
 
 class TestDeviceFingerprintUniqueness:
+    pytestmark = pytest.mark.requires_db
+
     """验证同商家下不同账号的设备指纹组合不重复。"""
 
     @pytest.mark.asyncio

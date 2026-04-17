@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -25,6 +25,8 @@ RiskScene = Literal[
     "dm_inbound",
 ]
 RiskDecision = Literal["passed", "rewrite_required", "blocked", "manual_review"]
+RiskModule = Literal["E"]
+RiskDetailSchema = Literal["module_e_risk_event.v1"]
 
 
 class RiskKeywordCreateRequest(BaseModel):
@@ -51,12 +53,14 @@ class RiskKeywordCreateRequest(BaseModel):
 class RiskKeywordUpdateRequest(BaseModel):
     """Update a risk keyword."""
 
+    keyword: str | None = Field(None, min_length=1, max_length=128)
+    category: RiskKeywordCategory | None = None
     replacement: str | None = Field(None, max_length=128)
     match_mode: RiskMatchMode | None = None
     severity: RiskSeverity | None = None
     is_active: bool | None = None
 
-    @field_validator("replacement")
+    @field_validator("keyword", "replacement")
     @classmethod
     def strip_optional_text_fields(cls, value: str | None) -> str | None:
         if value is None:
@@ -65,6 +69,20 @@ class RiskKeywordUpdateRequest(BaseModel):
         if not stripped:
             raise ValueError("value cannot be blank")
         return stripped
+
+
+class RiskKeywordResponse(BaseModel):
+    """Risk keyword response payload."""
+
+    id: UUID
+    merchant_id: UUID | None = None
+    keyword: str
+    category: RiskKeywordCategory
+    replacement: str | None = None
+    match_mode: RiskMatchMode
+    severity: RiskSeverity
+    is_active: bool
+    created_at: datetime
 
 
 class RiskScanRequest(BaseModel):
@@ -143,10 +161,16 @@ class AccountRiskQuotaResponse(BaseModel):
 class RiskEventResponse(BaseModel):
     """Risk event log item."""
 
+    id: UUID
+    merchant_id: UUID
+    account_id: UUID
+    module: RiskModule
     operation_type: str
     status: str
     risk_decision: RiskDecision
     violations: list[str] = Field(default_factory=list)
+    detail_schema: RiskDetailSchema
+    context: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
 
 
