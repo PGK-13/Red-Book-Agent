@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -32,6 +33,8 @@ logger = logging.getLogger(__name__)
 
 # 商家默认账号数量上限（可由套餐配置覆盖）
 DEFAULT_ACCOUNT_LIMIT = 50
+
+_MAC_CHROME_PATH = Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
 
 
 # ── 3.1 账号 CRUD ──
@@ -71,6 +74,22 @@ async def list_accounts(
     items = rows[:limit]
     next_cursor = items[-1].id if has_more and items else None
     return items, next_cursor, has_more
+
+
+async def _launch_browser(pw: object):
+    """启动可用的 Chromium 浏览器。
+
+    在本机优先复用已安装的 Google Chrome，避免依赖 Playwright 自带浏览器。
+    """
+    chromium = getattr(pw, "chromium")
+
+    if _MAC_CHROME_PATH.exists():
+        try:
+            return await chromium.launch(headless=True, channel="chrome")
+        except Exception:
+            logger.debug("Falling back to bundled Chromium after channel=chrome failed")
+
+    return await chromium.launch(headless=True)
 
 
 async def create_account(
@@ -573,7 +592,7 @@ async def sync_profile(
         )
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=True)
+        browser = await _launch_browser(pw)
         try:
             context = await _create_browser_context(browser, account, db)
             page = await context.new_page()  # type: ignore[attr-defined]
@@ -790,7 +809,7 @@ async def get_browser_context(
         )
 
     pw = await async_playwright().start()
-    browser = await pw.chromium.launch(headless=True)
+    browser = await _launch_browser(pw)
     context = await _create_browser_context(browser, account, db)
     return browser, context
 
@@ -854,7 +873,7 @@ async def start_qr_login(
         )
 
     pw_instance = await async_playwright().start()
-    browser = await pw_instance.chromium.launch(headless=True)
+    browser = await _launch_browser(pw_instance)
     context = await _create_browser_context(browser, account, db)
     page = await context.new_page()  # type: ignore[attr-defined]
 
@@ -962,7 +981,7 @@ async def poll_qr_login_status(
         from playwright.async_api import async_playwright
 
         async with async_playwright() as pw:
-            browser = await pw.chromium.launch(headless=True)
+            browser = await _launch_browser(pw)
             try:
                 context = await _create_browser_context(browser, account, db)
                 page = await context.new_page()  # type: ignore[attr-defined]
@@ -1031,7 +1050,7 @@ async def public_start_qr_login() -> dict[str, str]:
         )
 
     pw_instance = await async_playwright().start()
-    browser = await pw_instance.chromium.launch(headless=True)
+    browser = await _launch_browser(pw_instance)
     context = await browser.new_context(
         user_agent=(
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
