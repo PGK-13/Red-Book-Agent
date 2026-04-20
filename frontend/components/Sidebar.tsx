@@ -27,6 +27,17 @@ export const navItems = [
     ),
   },
   {
+    href: "/knowledge",
+    label: "知识库",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <path d="M5 3.5h9a2 2 0 012 2v9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M4 5.5A2.5 2.5 0 016.5 3h8A1.5 1.5 0 0116 4.5v11A1.5 1.5 0 0114.5 17h-8A2.5 2.5 0 014 14.5v-9z" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M7 7.5h5M7 10h5M7 12.5h3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
     href: "/content",
     label: "内容管理",
     icon: (
@@ -38,7 +49,7 @@ export const navItems = [
   },
   {
     href: "/conversations",
-    label: "实时会话",
+    label: "互动管理",
     icon: (
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
         <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v9a1 1 0 01-1 1h-4l-3 3v-3H4a1 1 0 01-1-1V4z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
@@ -49,23 +60,25 @@ export const navItems = [
     ),
   },
   {
-    href: "/hitl",
-    label: "HITL 审核",
+    href: "/risk",
+    label: "风控管理",
     icon: (
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-        <path d="M10 2l2.5 5 5.5.8-4 3.9.9 5.3L10 14.5 5.1 17l.9-5.3-4-3.9 5.5-.8L10 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M10 2l6 2v5c0 4.2-2.4 7.5-6 9-3.6-1.5-6-4.8-6-9V4l6-2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M8 10l1.8 1.8L12.5 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
+  },
+];
+
+const utilityItems = [
+  {
+    href: "/hitl",
+    label: "审核工作台",
   },
   {
     href: "/alerts",
     label: "告警中心",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-        <path d="M10 2a1 1 0 01.993.883L11 3v.5c2.613.502 4.5 2.61 4.5 5.5v3l1.5 2H3l1.5-2v-3c0-2.89 1.887-4.998 4.5-5.5V3a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" />
-        <path d="M8 16a2 2 0 104 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
-    ),
   },
 ];
 
@@ -115,6 +128,29 @@ export default function Sidebar() {
             </Link>
           );
         })}
+        <div className="mt-4 px-3">
+          <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.18em] text-text-muted">
+            其他页面
+          </p>
+          <div className="space-y-1">
+            {utilityItems.map((item) => {
+              const isActive = pathname.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center gap-3 rounded-lg px-3 h-[36px] text-[13px] font-medium transition-colors ${
+                    isActive
+                      ? "bg-accent/10 text-accent"
+                      : "text-text-secondary hover:text-text-primary hover:bg-bg-surface-hover"
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
       </nav>
     </aside>
   );

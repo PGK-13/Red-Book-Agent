@@ -56,17 +56,21 @@ export default function AuthProvider({
 
   // On mount: read JWT from localStorage, validate expiry
   useEffect(() => {
-    const stored = localStorage.getItem(TOKEN_KEY);
-    if (stored) {
-      const payload = parseJwtPayload(stored);
-      if (payload && !isExpired(payload)) {
-        setToken(stored);
-        setUser(extractUser(payload));
-      } else {
-        localStorage.removeItem(TOKEN_KEY);
+    const timeoutId = window.setTimeout(() => {
+      const stored = localStorage.getItem(TOKEN_KEY);
+      if (stored) {
+        const payload = parseJwtPayload(stored);
+        if (payload && !isExpired(payload)) {
+          setToken(stored);
+          setUser(extractUser(payload));
+        } else {
+          localStorage.removeItem(TOKEN_KEY);
+        }
       }
-    }
-    setIsLoading(false);
+      setIsLoading(false);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, []);
 
   const value = useMemo(

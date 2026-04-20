@@ -34,6 +34,41 @@ export default function QrLoginCard() {
     }
   }, []);
 
+  const enterPreviewDashboard = useCallback(() => {
+    const encodeBase64Url = (value: string) => {
+      const bytes = new TextEncoder().encode(value);
+      let binary = "";
+      bytes.forEach((byte) => {
+        binary += String.fromCharCode(byte);
+      });
+      return btoa(binary)
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/g, "");
+    };
+
+    const header = btoa(JSON.stringify({ alg: "none", typ: "JWT" }))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/g, "");
+    const payload = encodeBase64Url(
+      JSON.stringify({
+        nickname: "预览用户",
+        avatar: null,
+        xhs_user_id: "preview_user",
+        exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
+      })
+    );
+    const token = `${header}.${payload}.preview`;
+
+    login(token, {
+      nickname: "预览用户",
+      avatar: null,
+      xhs_user_id: "preview_user",
+    });
+    router.push("/dashboard");
+  }, [login, router]);
+
   const fetchQrCode = useCallback(async () => {
     setStatus("loading");
     setQrImage(null);
@@ -173,6 +208,16 @@ export default function QrLoginCard() {
 
       {/* Hint */}
       <p className="text-text-secondary text-[14px]">请使用小红书 App 扫码</p>
+
+      {process.env.NODE_ENV !== "production" ? (
+        <button
+          type="button"
+          onClick={enterPreviewDashboard}
+          className="text-[13px] font-medium text-accent underline underline-offset-4"
+        >
+          先进入后台预览
+        </button>
+      ) : null}
     </div>
   );
 }
