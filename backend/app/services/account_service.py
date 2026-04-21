@@ -10,14 +10,9 @@ from __future__ import annotations
 import base64
 import json
 import logging
-from pathlib import Path
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from uuid import uuid4
-
-from fastapi import HTTPException, status
-from sqlalchemy import and_, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.core.notifications import send_alert
 from app.core.rate_limiter import get_redis
@@ -28,6 +23,10 @@ from app.schemas.account import (
     PersonaUpdateRequest,
     ProxyUpdateRequest,
 )
+from fastapi import HTTPException, status
+from sqlalchemy import and_, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 logger = logging.getLogger(__name__)
 
@@ -1201,9 +1200,8 @@ async def public_poll_qr_login_status(session_id: str) -> dict:
                 xhs_user_id = current_url.split("/user/")[-1].split("?")[0]
 
             # 签发 JWT
-            from jose import jwt as jose_jwt
-
             from app.config import settings
+            from jose import jwt as jose_jwt
 
             payload = {
                 "sub": xhs_user_id,
