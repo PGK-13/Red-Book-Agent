@@ -7,8 +7,6 @@ from __future__ import annotations
 
 from typing import cast
 
-from fastapi import APIRouter, Query
-
 from app.schemas.account import (
     CaptchaSubmitRequest,
     CaptchaSubmitResponse,
@@ -17,6 +15,7 @@ from app.schemas.account import (
 )
 from app.schemas.base import BaseResponse
 from app.services import account_service
+from fastapi import APIRouter, Query
 
 router = APIRouter(prefix="/accounts/qr-login", tags=["扫码登录（公开）"])
 
