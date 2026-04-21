@@ -9,8 +9,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Query
-
 from app.dependencies import CurrentMerchantId, DbSession
 from app.schemas.account import (
     AccountCreateRequest,
@@ -27,6 +25,7 @@ from app.schemas.account import (
 )
 from app.schemas.base import BaseResponse, PaginatedData, PaginatedResponse
 from app.services import account_service
+from fastapi import APIRouter, Query
 
 router = APIRouter(prefix="/accounts", tags=["账号管理"])
 
