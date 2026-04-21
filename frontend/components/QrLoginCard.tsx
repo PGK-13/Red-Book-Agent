@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth, type UserInfo } from "@/lib/auth-context";
 import { apiClient } from "@/lib/api-client";
 
-type QrStatus = "loading" | "waiting" | "success" | "expired" | "error";
+type QrStatus = "loading" | "waiting" | "need_captcha" | "success" | "expired" | "error";
 
 interface QrStartResponse {
   session_id: string;
@@ -13,7 +13,7 @@ interface QrStartResponse {
 }
 
 interface QrPollResponse {
-  status: "waiting" | "success" | "expired";
+  status: "waiting" | "need_captcha" | "success" | "expired";
   token?: string;
   user?: UserInfo;
 }
@@ -25,6 +25,8 @@ export default function QrLoginCard() {
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [status, setStatus] = useState<QrStatus>("loading");
+  const [captcha, setCaptcha] = useState("");
+  const [captchaSubmitting, setCaptchaSubmitting] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPolling = useCallback(() => {
@@ -73,6 +75,7 @@ export default function QrLoginCard() {
     setStatus("loading");
     setQrImage(null);
     setSessionId(null);
+    setCaptcha("");
     stopPolling();
 
     try {
@@ -88,9 +91,25 @@ export default function QrLoginCard() {
     }
   }, [stopPolling]);
 
-  // Start polling when sessionId is set and status is waiting
+  const submitCaptcha = useCallback(async () => {
+    if (!sessionId || captcha.length !== 6 || captchaSubmitting) return;
+    setCaptchaSubmitting(true);
+    try {
+      await apiClient.post("/api/v1/accounts/qr-login/submit-captcha", {
+        session_id: sessionId,
+        captcha,
+      });
+      setStatus("waiting");
+    } catch {
+      setStatus("error");
+    } finally {
+      setCaptchaSubmitting(false);
+    }
+  }, [sessionId, captcha, captchaSubmitting]);
+
+  // Start polling when sessionId is set and status is waiting or need_captcha
   useEffect(() => {
-    if (!sessionId || status !== "waiting") return;
+    if (!sessionId || (status !== "waiting" && status !== "need_captcha")) return;
 
     intervalRef.current = setInterval(async () => {
       try {
@@ -106,6 +125,8 @@ export default function QrLoginCard() {
         } else if (data.status === "expired") {
           stopPolling();
           setStatus("expired");
+        } else if (data.status === "need_captcha") {
+          setStatus("need_captcha");
         }
         // "waiting" → keep polling
       } catch {
@@ -150,6 +171,31 @@ export default function QrLoginCard() {
       {/* QR Code Area */}
       <div className="relative w-[200px] h-[200px] rounded-xl overflow-hidden bg-bg-surface-dim flex items-center justify-center">
         {status === "loading" && <Spinner />}
+
+        {status === "need_captcha" && (
+          <div className="flex flex-col items-center justify-center gap-3 w-full px-4">
+            <span className="text-text-secondary text-[14px] text-center">
+              请输入六位验证码
+            </span>
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={captcha}
+              onChange={(e) => setCaptcha(e.target.value.replace(/\D/g, ""))}
+              onKeyDown={(e) => e.key === "Enter" && submitCaptcha()}
+              placeholder="000000"
+              className="w-full text-center text-[24px] tracking-[8px] border border-border rounded-lg h-[48px] outline-none focus:border-accent"
+            />
+            <button
+              onClick={submitCaptcha}
+              disabled={captcha.length !== 6 || captchaSubmitting}
+              className="w-full bg-accent text-white font-semibold text-[14px] h-[40px] rounded-lg hover:brightness-110 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {captchaSubmitting ? "验证中..." : "确认"}
+            </button>
+          </div>
+        )}
 
         {status === "waiting" && qrImage && (
           <img
@@ -207,7 +253,11 @@ export default function QrLoginCard() {
       </div>
 
       {/* Hint */}
-      <p className="text-text-secondary text-[14px]">请使用小红书 App 扫码</p>
+      <p className="text-text-secondary text-[14px]">
+        {status === "need_captcha"
+          ? "验证码已发送至小红书绑定的手机号"
+          : "请使用小红书 App 扫码"}
+      </p>
 
       {process.env.NODE_ENV !== "production" ? (
         <button

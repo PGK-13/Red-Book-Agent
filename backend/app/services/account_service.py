@@ -85,11 +85,11 @@ async def _launch_browser(pw: object):
 
     if _MAC_CHROME_PATH.exists():
         try:
-            return await chromium.launch(headless=True, channel="chrome")
+            return await chromium.launch(headless=False, channel="chrome")
         except Exception:
             logger.debug("Falling back to bundled Chromium after channel=chrome failed")
 
-    return await chromium.launch(headless=True)
+    return await chromium.launch(headless=False)
 
 
 async def create_account(
@@ -823,6 +823,8 @@ XHS_LOGIN_URL = "https://www.xiaohongshu.com"
 
 # 二维码区域选择器（小红书主站登录弹窗中的二维码）
 QR_CODE_IMG_SELECTOR = ".code-area"
+# 扫码成功后的遮盖提示文字（QR 区被白色遮盖，上层显示此文字）
+QR_SCAN_SUCCESS_SELECTOR = ".code-area .scan-success, .login-modal .success-text"
 
 # 登录成功检测选择器
 LOGIN_MODAL_SELECTOR = ".login-modal"
@@ -1150,17 +1152,25 @@ async def public_poll_qr_login_status(session_id: str) -> dict:
     if pw_session is None:
         return {"status": "waiting", "token": None, "user": None}
 
+    # 使用第一个页面（主 QR 登录页）检测登录状态和 QR 是否消失
     page = pw_session["page"]
-
     try:
-        # ── 检查二维码区域是否仍在页面上 ──
         qr_img = await page.query_selector(QR_CODE_IMG_SELECTOR)
-        # 同时检查登录弹窗是否还在
         login_modal = await page.query_selector(LOGIN_MODAL_SELECTOR)
+        scan_success_el = await page.query_selector(QR_SCAN_SUCCESS_SELECTOR)
+        print(f"[POLL] {session_id}: qr_img={qr_img is not None}, login_modal={login_modal is not None}")
+        print(f"[POLL] {session_id}: scan_success_el={scan_success_el is not None}")
+        context = pw_session["context"]
+        print(f"[POLL] {session_id}: total pages={len(context.pages)}, urls={[p.url for p in context.pages]}")
 
-        # ── 验证码检测（仅在二维码消失后，即用户已扫码确认） ──
-        if not qr_img and login_modal:
-            captcha_input = await page.query_selector(CAPTCHA_INPUT_SELECTOR)
+        # ── 验证码检测：扫码成功后（QR 被遮盖显示"扫码成功"文字）检查所有窗口 ──
+        if scan_success_el or not qr_img:
+            captcha_input = None
+            for p in context.pages:
+                captcha_input = await p.query_selector(CAPTCHA_INPUT_SELECTOR)
+                if captcha_input:
+                    print(f"[POLL] {session_id}: captcha found on page {p.url}")
+                    break
             if captcha_input:
                 session_data["status"] = "need_captcha"
                 remaining_ttl = await redis.ttl(session_key)
@@ -1274,18 +1284,30 @@ async def public_submit_captcha(session_id: str, captcha: str) -> dict[str, str]
     if pw_session is None:
         return {"status": "expired"}
 
-    page = pw_session["page"]
+    context = pw_session["context"]
+
+    # 遍历所有页面，找到验证码输入框
+    captcha_page = None
+    for p in context.pages:
+        input_el = await p.query_selector(CAPTCHA_INPUT_SELECTOR)
+        if input_el:
+            captcha_page = p
+            break
+
+    if captcha_page is None:
+        _cleanup_pub_qr_session(session_id)
+        return {"status": "expired"}
 
     try:
-        await page.fill(CAPTCHA_INPUT_SELECTOR, captcha)
+        await captcha_page.fill(CAPTCHA_INPUT_SELECTOR, captcha)
 
-        submit_btn = await page.query_selector(CAPTCHA_SUBMIT_SELECTOR)
+        submit_btn = await captcha_page.query_selector(CAPTCHA_SUBMIT_SELECTOR)
         if submit_btn:
             await submit_btn.click()
         else:
-            await page.keyboard.press("Enter")
+            await captcha_page.keyboard.press("Enter")
 
-        await page.wait_for_timeout(1000)
+        await captcha_page.wait_for_timeout(1000)
 
         session_data["status"] = "waiting"
         remaining_ttl = await redis.ttl(session_key)
