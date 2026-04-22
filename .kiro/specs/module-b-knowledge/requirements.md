@@ -88,9 +88,10 @@ Response (200):
 
 1. THE RAG 知识库 SHALL 支持商家标记和上传历史爆款文案，每条文案需包含互动数据标签（点赞数、收藏数、发布时间）用于检索排序。
 2. THE 营销 Agent SHALL 每 24 小时自动回抓所有已发布笔记的阅读量、点赞数、收藏数和评论数，并将最新数据更新至数据库。
-3. WHEN 数据回抓完成，THE RAG 知识库 SHALL 计算每篇笔记的互动率（点赞数 + 收藏数）并与该账号的历史互动率均值进行比较。
-4. WHEN 笔记互动率高于账号历史均值的 1.5 倍，THE RAG 知识库 SHALL 将该笔记对应文案的检索权重自动提升 20%。
-5. WHEN 笔记互动率低于账号历史均值的 50%，THE RAG 知识库 SHALL 将该笔记对应文案的检索权重自动降低 10%。
+3. WHEN 数据回抓完成，THE RAG 知识库 SHALL 计算每篇笔记的互动率并与该账号的历史互动率均值进行比较。
+   **互动率公式**：`互动率 = (点赞数 + 收藏数) / 发布天数`
+4. WHEN 笔记互动率高于账号历史均值的 1.5 倍，THE RAG 知识库 SHALL 将该笔记对应文案的检索权重自动提升 20%（乘以 1.2）。
+5. WHEN 笔记互动率低于账号历史均值的 50%，THE RAG 知识库 SHALL 将该笔记对应文案的检索权重自动降低 10%（乘以 0.9）。
 6. THE RAG 知识库 SHALL 记录每次权重调整的时间、触发原因和调整幅度，日志保留周期不少于 30 天。
 
 ### API 接口
@@ -449,6 +450,88 @@ Request Body:
 }
 ```
 
+### 补充接口（来自前端 UI 需求）
+
+| Method | Path | 说明 |
+|--------|------|------|
+| GET | `/api/v1/knowledge/documents/count` | 文档总数 |
+| GET | `/api/v1/knowledge/documents/pending/count` | 待处理文件数量 |
+| GET | `/api/v1/knowledge/chunks/count` | 索引条目总数 |
+| GET | `/api/v1/knowledge/industry-notes/count` | 行业爆款笔记数量 |
+| GET | `/api/v1/knowledge/industry-notes/{id}` | 行业爆款笔记详情 |
+| POST | `/api/v1/knowledge/industry-notes/{id}/re-crawl` | 重新抓取单篇笔记 |
+| POST | `/api/v1/knowledge/viral-copies/import-from-notes` | 从已发布笔记导入爆款文案 |
+
+```
+GET /api/v1/knowledge/documents/count
+Response: { "code": 0, "data": { "total": 28 } }
+
+GET /api/v1/knowledge/documents/pending/count
+Response: { "code": 0, "data": { "pending_count": 3 } }
+
+GET /api/v1/knowledge/chunks/count
+Response: { "code": 0, "data": { "total": 2640 } }
+
+GET /api/v1/knowledge/industry-notes/count
+Response: { "code": 0, "data": { "total": 150, "by_keyword": { "护肤": 75, "咖啡": 45, "健身": 30 } } }
+
+GET /api/v1/knowledge/industry-notes/{id}
+Response:
+{
+  "code": 0,
+  "data": {
+    "id": "uuid",
+    "title": "油皮必入！这款精华我用空了3瓶",
+    "body": "...",
+    "tags": ["油皮精华", "护肤心得"],
+    "cover_style": "real_person",
+    "likes": 8932,
+    "collects": 4521,
+    "comments": 892,
+    "published_at": "2024-01-01T00:00:00Z",
+    "author_fans": "10万+",
+    "engagement_rate": 0.015,
+    "retrieval_weight": 1.2,
+    "crawled_at": "2024-01-02T00:00:00Z"
+  }
+}
+
+POST /api/v1/knowledge/industry-notes/{id}/re-crawl
+Response: { "code": 0, "data": { "task_id": "uuid" } }
+
+POST /api/v1/knowledge/viral-copies/import-from-notes
+Request Body:
+{
+  "account_id": "uuid",
+  "note_id": "xhs_note_123"
+}
+Response (201):
+{
+  "code": 0,
+  "data": {
+    "id": "uuid",
+    "title": "...",
+    "likes": 1523,
+    "collects": 892,
+    "published_at": "2024-01-01T00:00:00Z",
+    "weight": 1.0,
+    "engagement_rate": 0.024
+  }
+}
+```
+
+### 错误码（Knowledge 模块）
+
+| 错误码 | 说明 |
+|--------|------|
+| 40101 | 文档不存在 |
+| 40102 | 文档解析失败 |
+| 40103 | 索引任务失败 |
+| 40104 | 行业关键词不存在 |
+| 40105 | 爆款笔记不存在 |
+| 40106 | 抓取任务触发失败 |
+| 40107 | 数据量不足（趋势分析 < 10 条） |
+
 ---
 
 ## 正确性属性
@@ -602,6 +685,203 @@ Response:
         "hit_count": 8,
         "high_quality_hit": true,
         "created_at": "2024-01-01T10:00:00Z"
+#### 获取文档详情
+```
+GET /api/v1/knowledge/documents/{document_id}
+```
+**Response:**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "id": "uuid",
+    "filename": "产品手册.pdf",
+    "file_type": "pdf",
+    "file_size": 1024000,
+    "status": "indexed",
+    "chunk_count": 42,
+    "merchant_id": "uuid",
+    "error_message": null,
+    "created_at": "2026-04-22T10:00:00Z",
+    "indexed_at": "2026-04-22T10:05:00Z"
+  }
+}
+```
+
+#### 获取文档总数
+```
+GET /api/v1/knowledge/documents/count
+```
+**Response:**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "total": 28
+  }
+}
+```
+
+#### 获取待处理文件数量
+```
+GET /api/v1/knowledge/documents/pending/count
+```
+**Response:**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "pending_count": 3
+  }
+}
+```
+
+### 7.2 索引块统计接口
+
+#### 获取索引条目总数
+```
+GET /api/v1/knowledge/chunks/count
+```
+**Response:**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "total": 2640
+  }
+}
+```
+
+### 7.3 行业爆款笔记接口
+
+#### 获取爆款笔记详情
+```
+GET /api/v1/knowledge/industry-notes/{note_id}
+```
+**Response:**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "id": "uuid",
+    "title": "推荐XX品牌的5个理由",
+    "summary": "正文摘要...",
+    "tags": ["护肤", "好物推荐"],
+    "cover_style": "product_flatlay",
+    "like_count": 5200,
+    "collect_count": 3200,
+    "comment_count": 186,
+    "published_at": "2026-04-10T12:00:00Z",
+    "author_follower_level": "10w-50w",
+    "engagement_rate": 0.082,
+    "retrieval_weight": 1.2,
+    "merchant_id": "uuid",
+    "crawled_at": "2026-04-22T00:00:00Z"
+  }
+}
+```
+
+#### 获取爆款笔记数量
+```
+GET /api/v1/knowledge/industry-notes/count
+```
+**Response:**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "total": 150,
+    "by_keyword": {
+      "护肤": 75,
+      "咖啡": 45,
+      "健身": 30
+    }
+  }
+}
+```
+
+#### 重新抓取爆款笔记
+```
+POST /api/v1/knowledge/industry-notes/{note_id}/re-crawl
+```
+**Response:**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "task_id": "uuid"
+  }
+}
+```
+
+### 7.4 检索设置接口
+
+#### 获取检索参数
+```
+GET /api/v1/knowledge/retrieval-settings
+```
+**Response:**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "similarity_threshold": 0.6,
+    "max_results": 5,
+    "rerank_enabled": true,
+    "hybrid_search_alpha": 0.7
+  }
+}
+```
+
+#### 更新检索参数
+```
+PUT /api/v1/knowledge/retrieval-settings
+```
+**Request:**
+```json
+{
+  "similarity_threshold": 0.6,
+  "max_results": 5,
+  "rerank_enabled": true,
+  "hybrid_search_alpha": 0.7
+}
+```
+**Response:**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": null
+}
+```
+
+### 7.5 行业关键词接口（补充 B5）
+
+#### 获取关键词列表
+```
+GET /api/v1/knowledge/industry-keywords
+```
+**Response:**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "items": [
+      {
+        "id": "uuid",
+        "keyword": "护肤",
+        "note_count": 50,
+        "last_crawled_at": "2026-04-22T00:00:00Z",
+        "created_at": "2026-04-01T10:00:00Z"
       }
     ]
   }
@@ -838,3 +1118,49 @@ B6 趋势分析
 | hybrid_enabled | BOOLEAN | 混合检索开关（默认 true）|
 | created_at | TIMESTAMPTZ | 创建时间 |
 | updated_at | TIMESTAMPTZ | 更新时间 |
+#### 添加行业关键词
+```
+POST /api/v1/knowledge/industry-keywords
+```
+**Request:**
+```json
+{
+  "keyword": "护肤"
+}
+```
+**Response:**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "id": "uuid",
+    "keyword": "护肤",
+    "created_at": "2026-04-22T10:00:00Z"
+  }
+}
+```
+
+#### 删除行业关键词
+```
+DELETE /api/v1/knowledge/industry-keywords/{keyword_id}
+```
+**Response:**
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": null
+}
+```
+
+### 7.6 错误码
+
+| 错误码 | 说明 |
+|--------|------|
+| 40101 | 文档不存在 |
+| 40102 | 文档解析失败 |
+| 40103 | 索引任务失败 |
+| 40104 | 行业关键词不存在 |
+| 40105 | 爆款笔记不存在 |
+| 40106 | 抓取任务触发失败 |
