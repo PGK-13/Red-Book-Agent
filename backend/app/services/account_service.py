@@ -830,15 +830,35 @@ QR_SCAN_SUCCESS_SELECTOR = ".code-area .scan-success, .login-modal .success-text
 LOGIN_MODAL_SELECTOR = ".login-modal"
 LOGIN_SUCCESS_SELECTOR = ".user-avatar, .reds-avatar"
 
-# 验证码相关 CSS 选择器（小红书扫码确认后弹出的短信验证码）
-# 注意：仅在二维码图片消失后才使用，避免误匹配登录页手机号验证码输入框
+# 验证码弹窗检测选择器（小红书扫码确认后可能弹出的短信验证码模态框）
+# 优先通过弹窗标题文字定位，比 input 选择器更可靠，不会误匹配登录页手机号输入框
+CAPTCHA_DIALOG_SELECTOR = (
+    # 包含"短信验证码"或"验证码验证"文字的弹窗标题
+    "div:text('短信验证码'), "
+    "span:text('短信验证码'), "
+    "h3:text('短信验证码'), "
+    "p:text('短信验证码'), "
+    # 包含"验证码将发送至"提示文字
+    "div:text('验证码将发送至'), "
+    "span:text('验证码将发送至'), "
+    "p:text('验证码将发送至')"
+)
+
+# 验证码输入框选择器（在确认弹窗存在后使用）
 CAPTCHA_INPUT_SELECTOR = (
     "input[placeholder*='验证码'], "
+    "input[placeholder*='请输入验证码'], "
     "input[type='tel'][maxlength='6'], "
+    "input[type='number'][maxlength='6'], "
     "input.captcha-input"
 )
 CAPTCHA_SUBMIT_SELECTOR = (
-    "button.captcha-submit, " "button[class*='submit'], " ".captcha-container button"
+    "button:text('验证'), "
+    "button:text('确认'), "
+    "button:text('提交'), "
+    "button.captcha-submit, "
+    "button[class*='submit'], "
+    ".captcha-container button"
 )
 
 # 公开扫码会话的进程内 Playwright 引用缓存
@@ -1057,9 +1077,19 @@ async def public_start_qr_login() -> dict[str, str]:
         user_agent=(
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
+            "Chrome/125.0.0.0 Safari/537.36"
         ),
+        viewport={"width": 1280, "height": 800},
+        locale="zh-CN",
+        timezone_id="Asia/Shanghai",
     )
+    # 注入反自动化检测脚本
+    await context.add_init_script("""
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        Object.defineProperty(navigator, 'languages', { get: () => ['zh-CN', 'zh', 'en'] });
+        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+        window.chrome = { runtime: {} };
+    """)
     page = await context.new_page()
 
     try:
@@ -1150,63 +1180,154 @@ async def public_poll_qr_login_status(session_id: str) -> dict:
     # status == "waiting"：通过 Playwright 检测登录状态
     pw_session = _active_pub_qr_sessions.get(session_id)
     if pw_session is None:
+        print(f"[POLL] {session_id}: pw_session is None, returning waiting")
         return {"status": "waiting", "token": None, "user": None}
 
-    # 使用第一个页面（主 QR 登录页）检测登录状态和 QR 是否消失
     page = pw_session["page"]
+    context = pw_session["context"]
     try:
-        qr_img = await page.query_selector(QR_CODE_IMG_SELECTOR)
-        login_modal = await page.query_selector(LOGIN_MODAL_SELECTOR)
-        scan_success_el = await page.query_selector(QR_SCAN_SUCCESS_SELECTOR)
-        print(f"[POLL] {session_id}: qr_img={qr_img is not None}, login_modal={login_modal is not None}")
-        print(f"[POLL] {session_id}: scan_success_el={scan_success_el is not None}")
-        context = pw_session["context"]
-        print(f"[POLL] {session_id}: total pages={len(context.pages)}, urls={[p.url for p in context.pages]}")
+        current_url = page.url
+        cookies = await context.cookies()
+        cookie_names = [c["name"] for c in cookies]
 
-        # ── 验证码检测：扫码成功后（QR 被遮盖显示"扫码成功"文字）检查所有窗口 ──
-        if scan_success_el or not qr_img:
-            captcha_input = None
-            for p in context.pages:
-                captcha_input = await p.query_selector(CAPTCHA_INPUT_SELECTOR)
-                if captcha_input:
-                    print(f"[POLL] {session_id}: captcha found on page {p.url}")
-                    break
-            if captcha_input:
-                session_data["status"] = "need_captcha"
-                remaining_ttl = await redis.ttl(session_key)
-                if remaining_ttl > 0:
-                    await redis.setex(
-                        session_key, remaining_ttl, json.dumps(session_data)
-                    )
-                logger.info(
-                    "Captcha input detected for public QR session %s",
-                    session_id,
+        # 记录初始 cookie 快照（首次轮询时保存）
+        initial_cookies = session_data.get("initial_cookie_names")
+        if initial_cookies is None:
+            session_data["initial_cookie_names"] = cookie_names
+            remaining_ttl = await redis.ttl(session_key)
+            if remaining_ttl > 0:
+                await redis.setex(session_key, remaining_ttl, json.dumps(session_data))
+            initial_cookies = cookie_names
+
+        # 计算新增的 cookie
+        new_cookies = [n for n in cookie_names if n not in initial_cookies]
+
+        print(
+            f"[POLL] {session_id}: url={current_url}, "
+            f"cookies={len(cookies)}, new_cookies={new_cookies}"
+        )
+
+        # ── 验证码检测 ──
+        captcha_detected = False
+
+        # 冷却期：验证码提交后 15 秒内跳过验证码检测，只检测登录成功
+        captcha_cooldown = False
+        submitted_at_str = session_data.get("captcha_submitted_at")
+        if submitted_at_str:
+            submitted_at = datetime.fromisoformat(submitted_at_str)
+            elapsed = (datetime.now(timezone.utc) - submitted_at).total_seconds()
+            if elapsed < 15:
+                captcha_cooldown = True
+                print(f"[POLL] {session_id}: captcha cooldown, {elapsed:.0f}s since submit")
+
+        if not captcha_cooldown:
+            # 情况 1：被小红书反爬拦截，跳转到二次验证页面
+            if "/website-login/captcha" in current_url:
+                print(f"[POLL] {session_id}: anti-bot captcha page detected")
+                captcha_detected = True
+
+            # 情况 2：短信验证码弹窗（叠加在登录弹窗之上）
+            if not captcha_detected:
+                for p in context.pages:
+                    try:
+                        html_content = await p.content()
+                        if "短信验证码验证" in html_content:
+                            print(f"[POLL] {session_id}: SMS captcha dialog detected")
+                            captcha_detected = True
+                            break
+                        if "验证码将发送至" in html_content:
+                            print(f"[POLL] {session_id}: SMS captcha dialog detected (alt)")
+                            captcha_detected = True
+                            break
+                    except Exception as e:
+                        print(f"[POLL] {session_id}: page.content() error: {e}")
+
+        if captcha_detected:
+            session_data["status"] = "need_captcha"
+            remaining_ttl = await redis.ttl(session_key)
+            if remaining_ttl > 0:
+                await redis.setex(
+                    session_key, remaining_ttl, json.dumps(session_data)
                 )
-                return {"status": "need_captcha", "token": None, "user": None}
+            print(f"[POLL] {session_id}: -> returning need_captcha")
+            return {"status": "need_captcha", "token": None, "user": None}
 
-        # ── 登录成功检测：弹窗消失或用户头像出现 ──
-        if not login_modal:
-            await page.wait_for_timeout(1000)
-            login_modal_recheck = await page.query_selector(LOGIN_MODAL_SELECTOR)
-            if not login_modal_recheck:
+        # ── 登录成功检测（多信号综合判断） ──
+        logged_in = False
+
+        # 信号 1：页面 URL 不再是初始登录页
+        # 登录成功后小红书会跳转回 explore 页面（去掉登录弹窗）或个人主页
+        initial_url = session_data.get("initial_url")
+        if initial_url is None:
+            session_data["initial_url"] = current_url
+            remaining_ttl = await redis.ttl(session_key)
+            if remaining_ttl > 0:
+                await redis.setex(session_key, remaining_ttl, json.dumps(session_data))
+            initial_url = current_url
+
+        if "/user/" in current_url:
+            print(f"[POLL] {session_id}: login detected via URL /user/")
+            logged_in = True
+
+        # 信号 2：页面 HTML 中出现登录后才有的元素
+        if not logged_in:
+            try:
+                html = await page.content()
+                login_indicators = ["退出登录", "side-bar-user", "user-info-box"]
+                for indicator in login_indicators:
+                    if indicator in html:
+                        print(f"[POLL] {session_id}: login detected via HTML '{indicator}'")
+                        logged_in = True
+                        break
+            except Exception:
+                pass
+
+        # 信号 3：新增了登录相关 cookie（对比初始快照）
+        if not logged_in and new_cookies:
+            login_cookie_candidates = [
+                "customer-sso-sid", "access-token", "galaxy_creator_session_id",
+                "xhsTrackerId", "extra_exp_ids", "id_token",
+            ]
+            new_login_cookies = [n for n in new_cookies if any(lc in n for lc in login_cookie_candidates)]
+            if new_login_cookies:
+                print(f"[POLL] {session_id}: login detected via new cookies: {new_login_cookies}")
                 logged_in = True
-            else:
-                logged_in = False
-        else:
-            avatar = await page.query_selector(LOGIN_SUCCESS_SELECTOR)
-            logged_in = avatar is not None
 
         if logged_in:
-            current_url = page.url
-            nickname = await _safe_text(page, ".user-name, .nickname") or ""
-            avatar_el = await page.query_selector(
-                ".user-avatar img, .reds-avatar img, .avatar img"
-            )
+            nickname = ""
             avatar_url: str | None = None
-            if avatar_el:
-                avatar_url = await avatar_el.get_attribute("src")
-
             xhs_user_id = ""
+
+            # 如果还在 explore 页面，主动导航到"我的"页面获取用户信息
+            if "/user/" not in current_url:
+                try:
+                    await page.goto(
+                        "https://www.xiaohongshu.com/user/profile/self",
+                        wait_until="domcontentloaded",
+                        timeout=8000,
+                    )
+                    await page.wait_for_timeout(1000)
+                    current_url = page.url
+                    print(f"[POLL] {session_id}: navigated to profile, url={current_url}")
+                except Exception as e:
+                    print(f"[POLL] {session_id}: failed to navigate to profile: {e}")
+
+            # 尝试从页面提取用户信息
+            try:
+                nickname = await _safe_text(
+                    page,
+                    ".user-name, .nickname, .side-bar-user .name, "
+                    "[class*='username'], [class*='nick']"
+                ) or ""
+                avatar_el = await page.query_selector(
+                    ".user-avatar img, .reds-avatar img, .avatar img, "
+                    "[class*='avatar'] img"
+                )
+                if avatar_el:
+                    avatar_url = await avatar_el.get_attribute("src")
+            except Exception:
+                pass
+
             if "/user/" in current_url:
                 xhs_user_id = current_url.split("/user/")[-1].split("?")[0]
 
@@ -1216,8 +1337,8 @@ async def public_poll_qr_login_status(session_id: str) -> dict:
             from app.config import settings
 
             payload = {
-                "sub": xhs_user_id,
-                "nickname": nickname,
+                "sub": xhs_user_id or "xhs_user",
+                "nickname": nickname or "小红书用户",
                 "avatar": avatar_url,
                 "exp": datetime.now(timezone.utc)
                 + timedelta(minutes=settings.jwt_expire_minutes),
@@ -1227,9 +1348,9 @@ async def public_poll_qr_login_status(session_id: str) -> dict:
             )
 
             user_info = {
-                "nickname": nickname,
+                "nickname": nickname or "小红书用户",
                 "avatar": avatar_url,
-                "xhs_user_id": xhs_user_id,
+                "xhs_user_id": xhs_user_id or "xhs_user",
             }
 
             session_data["status"] = "success"
@@ -1240,7 +1361,7 @@ async def public_poll_qr_login_status(session_id: str) -> dict:
                 await redis.setex(session_key, remaining_ttl, json.dumps(session_data))
 
             _cleanup_pub_qr_session(session_id)
-            logger.info("Public QR login success for session %s", session_id)
+            print(f"[POLL] {session_id}: -> returning success, nickname={nickname}")
             return {"status": "success", "token": token, "user": user_info}
 
     except Exception:
@@ -1286,35 +1407,102 @@ async def public_submit_captcha(session_id: str, captcha: str) -> dict[str, str]
 
     context = pw_session["context"]
 
-    # 遍历所有页面，找到验证码输入框
+    # 遍历所有页面，找到包含验证码输入框的页面
     captcha_page = None
     for p in context.pages:
-        input_el = await p.query_selector(CAPTCHA_INPUT_SELECTOR)
-        if input_el:
-            captcha_page = p
-            break
+        try:
+            html = await p.content()
+            if "短信验证码验证" in html or "验证码将发送至" in html or "请输入验证码" in html:
+                captcha_page = p
+                print(f"[CAPTCHA] {session_id}: found captcha page: {p.url}")
+                break
+        except Exception:
+            pass
 
     if captcha_page is None:
+        print(f"[CAPTCHA] {session_id}: no captcha page found")
         _cleanup_pub_qr_session(session_id)
         return {"status": "expired"}
 
     try:
-        await captcha_page.fill(CAPTCHA_INPUT_SELECTOR, captcha)
+        # 用 JavaScript 直接操作 DOM：查找输入框、填入验证码、点击提交
+        # 这样避免 ElementHandle 引用失效的问题
+        result = await captcha_page.evaluate(
+            """(code) => {
+                // 查找验证码输入框
+                const inputs = document.querySelectorAll('input');
+                let targetInput = null;
+                for (const inp of inputs) {
+                    const rect = inp.getBoundingClientRect();
+                    if (rect.width === 0 || rect.height === 0) continue;
+                    const ph = (inp.placeholder || '');
+                    if (ph.includes('验证码') || ph.includes('请输入')) {
+                        targetInput = inp;
+                        break;
+                    }
+                    // 6位数字输入框
+                    if ((inp.maxLength >= 4 && inp.maxLength <= 6) && inp.type !== 'password') {
+                        targetInput = inp;
+                    }
+                }
+                if (!targetInput) return { ok: false, error: 'input not found' };
 
-        submit_btn = await captcha_page.query_selector(CAPTCHA_SUBMIT_SELECTOR)
-        if submit_btn:
-            await submit_btn.click()
-        else:
-            await captcha_page.keyboard.press("Enter")
+                // 模拟 React 受控组件的值设置
+                const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                    window.HTMLInputElement.prototype, 'value'
+                ).set;
+                nativeInputValueSetter.call(targetInput, code);
+                targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+                targetInput.dispatchEvent(new Event('change', { bubbles: true }));
 
-        await captcha_page.wait_for_timeout(1000)
+                // 查找提交按钮
+                const buttons = document.querySelectorAll('button');
+                let submitBtn = null;
+                for (const btn of buttons) {
+                    const text = (btn.textContent || '').trim();
+                    const rect = btn.getBoundingClientRect();
+                    if (rect.width === 0 || rect.height === 0) continue;
+                    if (text === '验证' || text === '确认' || text === '提交') {
+                        submitBtn = btn;
+                        break;
+                    }
+                }
+
+                if (submitBtn) {
+                    submitBtn.click();
+                    return { ok: true, method: 'button_click' };
+                }
+
+                // 没找到按钮，尝试回车
+                targetInput.dispatchEvent(new KeyboardEvent('keydown', {
+                    key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true
+                }));
+                return { ok: true, method: 'enter_key' };
+            }""",
+            captcha,
+        )
+        print(f"[CAPTCHA] {session_id}: JS fill result: {result}")
+
+        if not result.get("ok"):
+            # JS 方式失败，尝试 Playwright 原生方式作为兜底
+            print(f"[CAPTCHA] {session_id}: JS failed, trying Playwright fill")
+            await captcha_page.fill(CAPTCHA_INPUT_SELECTOR, captcha)
+            await captcha_page.wait_for_timeout(300)
+            submit_btn = await captcha_page.query_selector(CAPTCHA_SUBMIT_SELECTOR)
+            if submit_btn:
+                await submit_btn.click()
+            else:
+                await captcha_page.keyboard.press("Enter")
+
+        await captcha_page.wait_for_timeout(2000)
 
         session_data["status"] = "waiting"
+        session_data["captcha_submitted_at"] = datetime.now(timezone.utc).isoformat()
         remaining_ttl = await redis.ttl(session_key)
         if remaining_ttl > 0:
             await redis.setex(session_key, remaining_ttl, json.dumps(session_data))
 
-        logger.info("Captcha submitted for public QR session %s", session_id)
+        print(f"[CAPTCHA] {session_id}: captcha submitted, waiting for result")
         return {"status": "waiting"}
 
     except Exception:

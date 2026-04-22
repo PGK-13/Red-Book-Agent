@@ -16,7 +16,8 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade() -> None:
+def upgrade() -> None: # 建东西
+    # ENUM 枚举类型
     risk_keyword_category_enum = sa.Enum(
         "platform_banned",
         "contraband",
@@ -90,9 +91,10 @@ def upgrade() -> None:
         sa.Column(
             "created_at",
             TIMESTAMP(timezone=True),
-            server_default=sa.func.now(),
-            nullable=False,
+            server_default=sa.func.now(), # 默认值是现在
+            nullable=False, # 非空
         ),
+        # 联合索引
         sa.UniqueConstraint(
             "merchant_id",
             "keyword",
@@ -102,9 +104,9 @@ def upgrade() -> None:
     )
     op.create_index("ix_risk_keywords_merchant_id", "risk_keywords", ["merchant_id"])
     op.create_index(
-        "ix_risk_keywords_merchant_category_active",
-        "risk_keywords",
-        ["merchant_id", "category", "is_active"],
+        "ix_risk_keywords_merchant_category_active", # index name
+        "risk_keywords",  # table name
+        ["merchant_id", "category", "is_active"], # index filed
     )
 
     op.create_table(

@@ -133,7 +133,7 @@ export default function QrLoginCard() {
         stopPolling();
         setStatus("error");
       }
-    }, 3000);
+    }, 1500);
 
     return () => stopPolling();
   }, [sessionId, status, login, router, stopPolling]);
