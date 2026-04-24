@@ -80,10 +80,9 @@
     - `classify_comment_intent(merchant_id, content, account_id, db)`：调用 `IntentRouterGraph`，返回 `IntentClassificationResult`
     - `classify_dm_intent(merchant_id, conversation_id, content, db)`：调用 `IntentRouterGraph`，返回 `IntentClassificationResult`
     - _Requirements: D2.1, D2.2, D2.3_
-  - [ ] 3.5 实现私信触发方法（content generation TODO）
-    - `trigger_dm_for_comment(merchant_id, comment_id, intent, db)`：根据评论意图从 RAG 检索，生成私信内容，执行风控，调用 `send_dm_via_rpa()`
-    - `trigger_dm_for_conversation(merchant_id, conversation_id, intent, user_message, db)`：根据私信意图从 RAG 检索，生成回复，执行风控，调用 `send_dm_via_rpa()`
-    - **部分完成**：去重检查 + DM 计数已完成，私信内容生成（需 RAG 模板 + 回复生成）标记 TODO
+  - [x] 3.5 实现私信触发方法
+    - `trigger_dm_for_comment(merchant_id, comment_id, intent, db)`：获取评论信息 → 获取/创建会话 → 调用 CustomerServiceGraph 生成并发送私信 → 记录去重
+    - `trigger_dm_for_conversation` 由 `poll_dm_messages` 中的 CustomerServiceGraph.reply() 实现
     - _Requirements: D3.1, D3.2, D3.3, D3.4, D3.5, D3.7_
   - [x] 3.6 实现 RPA 发送方法（不依赖官方 API）
     - `send_dm_via_rpa(merchant_id, account_id, xhs_user_id, content, db)`：通过 Playwright RPA 发送私信。调用 `humanized_delay()` 注入随机等待，执行风控扫描，频率配额检查，调用 `PlaywrightDM工具` 模拟操作
@@ -273,18 +272,20 @@
     - 拒绝向 `auth_expired` / `banned` / `suspended` 账号执行操作
     - _Requirements: D1.1_
 
-- [ ] 11. 编写属性测试和单元测试（待完成）
-  - [ ] 11.1 编写属性测试：评论去重私信触发
-  - [ ] 11.2 编写属性测试：实时客服端到端延迟
-  - [ ] 11.3 编写属性测试：会话上下文窗口大小
-  - [ ] 11.4 编写 InteractionService 单元测试
-  - [ ] 11.5 编写 API 路由层单元测试
-  - [ ] 11.6 编写集成测试
+- [x] 11. 编写属性测试和单元测试（已实现）
+  - [x] 11.1 属性测试：评论去重私信触发（Property 10, Hypothesis 50 examples）
+  - [ ] 11.2 属性测试：实时客服端到端延迟（Property 11, 需 Mock LLM 延迟）
+  - [x] 11.3 属性测试：会话上下文窗口大小（Property 12, 10轮截断/TTL过期）
+  - [x] 11.4 InteractionService 单元测试（CRUD/模式切换/Captcha/在线时段/去重）
+  - [x] 11.5 API 路由层单元测试（参数校验/响应格式/字数/HITL上限）
+  - [x] 11.6 集成测试（4条完整链路，Mock Playwright + LLM）
+  - 测试文件：`backend/tests/test_interaction_properties.py`, `test_interaction_service.py`, `test_interaction_api.py`, `test_interaction_integration.py`
 
 - [ ] 12. Final checkpoint — 确保模块 D 可端到端接入
   - 确保 Agent 图正确调用 RAG 检索和风控扫描
   - 确保令牌桶调度和 humanized delay 正确注入
   - 确保 Captcha 检测和账号状态检查生效
+  - Task 11.2（Property 11 E2E 延迟属性测试）：需要 Mock LLM 调用延迟，待实现
   - 确保所有属性测试（Hypothesis）通过，每个属性至少 100 次迭代
   - 确保所有单元测试与集成测试通过
   - Ensure all tests pass, ask the user if questions arise.

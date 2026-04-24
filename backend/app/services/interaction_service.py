@@ -1400,9 +1400,14 @@ async def check_monitored_notes(
                     db=db,
                 )
                 if not is_deduped:
-                    # TODO: 生成私信内容并发送
-                    # await trigger_dm_for_comment(...)
-                    triggered_dms += 1
+                    success, error = await trigger_dm_for_comment(
+                        merchant_id=note.merchant_id,
+                        comment_id=str(comment.id),
+                        account_id=account_id,
+                        db=db,
+                    )
+                    if success:
+                        triggered_dms += 1
 
             new_comments += 1
 
@@ -1429,6 +1434,77 @@ async def check_monitored_notes(
         "new_comments": new_comments,
         "triggered_dms": triggered_dms,
     }
+
+
+async def trigger_dm_for_comment(
+    merchant_id: str,
+    comment_id: str,
+    account_id: str,
+    db: AsyncSession,
+) -> tuple[bool, str | None]:
+    """根据评论意图触发私信。
+
+    流程：获取评论 → 获取/创建会话 → 调用 CustomerServiceGraph 生成并发送私信 → 记录去重。
+
+    Args:
+        merchant_id: 商家 ID。
+        comment_id: 评论 ID。
+        account_id: 商家子账号 ID。
+        db: 数据库会话。
+
+    Returns:
+        (发送是否成功, 错误信息或 None)。
+    """
+    # 获取评论信息
+    comment = await get_comment_by_id(merchant_id, UUID(comment_id), db)
+    if not comment:
+        return False, "Comment not found"
+
+    # 获取或创建会话
+    conversation = await get_or_create_conversation(
+        merchant_id=merchant_id,
+        account_id=account_id,
+        xhs_user_id=comment.xhs_user_id,
+        db=db,
+    )
+
+    # 检查去重
+    is_deduped = await check_dm_deduplication(
+        merchant_id=merchant_id,
+        account_id=account_id,
+        xhs_user_id=comment.xhs_user_id,
+        xhs_comment_id=comment.xhs_comment_id,
+        intent=comment.intent or "other",
+        db=db,
+    )
+    if is_deduped:
+        return True, None  # 已去重，视为成功
+
+    # 调用 CustomerServiceGraph 生成并发送私信
+    from agent.graphs.customer_service import get_customer_service_graph
+
+    svc_graph = get_customer_service_graph()
+    result = await svc_graph.reply(
+        conversation_id=str(conversation.id),
+        merchant_id=merchant_id,
+        account_id=account_id,
+        xhs_user_id=comment.xhs_user_id,
+        user_message=comment.content,
+        mode=conversation.mode,
+        db=db,
+    )
+
+    # 记录去重
+    await record_dm_trigger(
+        merchant_id=merchant_id,
+        account_id=account_id,
+        xhs_user_id=comment.xhs_user_id,
+        xhs_comment_id=comment.xhs_comment_id,
+        intent=comment.intent or "other",
+        db=db,
+    )
+
+    return result.send_success, result.error_message
 
 
 async def process_single_note_comments(
@@ -1541,7 +1617,14 @@ async def process_single_note_comments(
                 db=db,
             )
             if not is_deduped:
-                triggered_dms += 1
+                success, _ = await trigger_dm_for_comment(
+                    merchant_id=merchant_id,
+                    comment_id=str(comment.id),
+                    account_id=note.account_id,
+                    db=db,
+                )
+                if success:
+                    triggered_dms += 1
 
     note.last_checked_at = poll_time
     # 将本轮处理的评论 ID 写入 Redis（幂等兜底）
