@@ -79,6 +79,7 @@ class MonitoredNoteResponse(BaseModel):
     batch_size: int
     last_checked_at: datetime | None
     last_known_comment_count: int
+    last_seen_comment_id: str | None
     created_at: datetime
 
 

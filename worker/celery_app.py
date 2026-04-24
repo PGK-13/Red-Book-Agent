@@ -15,6 +15,10 @@ app = Celery(
         "worker.tasks.account_probe_task",
         "worker.tasks.profile_sync_task",
         "worker.tasks.alert_task",
+        "worker.tasks.comment_probe_task",
+        "worker.tasks.dm_probe_task",
+        "worker.tasks.dm_pending_task",
+        "worker.tasks.captcha_recovery_task",
     ],
 )
 

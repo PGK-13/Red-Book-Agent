@@ -313,6 +313,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("0"),
         ),
+        sa.Column("last_seen_comment_id", sa.String(64), nullable=True),
         sa.Column(
             "created_at",
             TIMESTAMP(timezone=True),
