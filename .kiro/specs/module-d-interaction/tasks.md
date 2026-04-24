@@ -274,7 +274,7 @@
 
 - [x] 11. 编写属性测试和单元测试（已实现）
   - [x] 11.1 属性测试：评论去重私信触发（Property 10, Hypothesis 50 examples）
-  - [ ] 11.2 属性测试：实时客服端到端延迟（Property 11, 需 Mock LLM 延迟）
+  - [x] 11.2 属性测试：实时客服端到端延迟（Property 11, Mock 图节点 + LLM 延迟）
   - [x] 11.3 属性测试：会话上下文窗口大小（Property 12, 10轮截断/TTL过期）
   - [x] 11.4 InteractionService 单元测试（CRUD/模式切换/Captcha/在线时段/去重）
   - [x] 11.5 API 路由层单元测试（参数校验/响应格式/字数/HITL上限）
