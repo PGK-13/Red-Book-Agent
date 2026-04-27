@@ -8,6 +8,7 @@ from uuid import uuid4
 from app.db.session import Base
 from sqlalchemy import (
     ARRAY,
+    JSON,
     Boolean,
     Enum,
     Float,
@@ -18,6 +19,8 @@ from sqlalchemy import (
     Text,
     Time,
     UniqueConstraint,
+    asc,
+    desc,
     text,
 )
 from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
@@ -81,8 +84,8 @@ class Comment(Base):
     __tablename__ = "comments"
     __table_args__ = (
         UniqueConstraint("xhs_comment_id", name="uq_xhs_comment_id"),
-        Index("ix_comments_merchant_status_created", "merchant_id", "reply_status", "created_at".desc()),
-        Index("ix_comments_account_note_created", "account_id", "xhs_note_id", "created_at".desc()),
+        Index("ix_comments_merchant_status_created", "merchant_id", "reply_status", desc("created_at")),
+        Index("ix_comments_account_note_created", "account_id", "xhs_note_id", desc("created_at")),
     )
 
     id: Mapped[str] = mapped_column(
@@ -138,7 +141,7 @@ class Conversation(Base):
     __tablename__ = "conversations"
     __table_args__ = (
         UniqueConstraint("account_id", "xhs_user_id", name="uq_account_xhs_user"),
-        Index("ix_conversations_merchant_mode_updated", "merchant_id", "mode", "last_message_at".desc()),
+        Index("ix_conversations_merchant_mode_updated", "merchant_id", "mode", desc("last_message_at")),
     )
 
     id: Mapped[str] = mapped_column(
@@ -158,7 +161,7 @@ class Conversation(Base):
         nullable=False,
         server_default=text("'auto'"),
     )
-    user_long_term_memory: Mapped[dict | None] = mapped_column(nullable=True)
+    user_long_term_memory: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     online_hours_start: Mapped[datetime | None] = mapped_column(Time, nullable=True)
     online_hours_end: Mapped[datetime | None] = mapped_column(Time, nullable=True)
     last_message_at: Mapped[datetime | None] = mapped_column(
@@ -179,7 +182,7 @@ class Message(Base):
 
     __tablename__ = "messages"
     __table_args__ = (
-        Index("ix_messages_conversation_sent_at", "conversation_id", "sent_at".desc()),
+        Index("ix_messages_conversation_sent_at", "conversation_id", desc("sent_at")),
     )
 
     id: Mapped[str] = mapped_column(
@@ -215,7 +218,7 @@ class IntentLog(Base):
 
     __tablename__ = "intent_logs"
     __table_args__ = (
-        Index("ix_intent_logs_merchant_created", "merchant_id", "created_at".desc()),
+        Index("ix_intent_logs_merchant_created", "merchant_id", desc("created_at")),
     )
 
     id: Mapped[str] = mapped_column(
@@ -251,7 +254,7 @@ class HITLQueue(Base):
 
     __tablename__ = "hitl_queue"
     __table_args__ = (
-        Index("ix_hitl_queue_merchant_status_created", "merchant_id", "status", "created_at".desc()),
+        Index("ix_hitl_queue_merchant_status_created", "merchant_id", "status", desc("created_at")),
     )
 
     id: Mapped[str] = mapped_column(
@@ -340,7 +343,7 @@ class MonitoredNote(Base):
     __tablename__ = "monitored_notes"
     __table_args__ = (
         UniqueConstraint("account_id", "xhs_note_id", name="uq_account_xhs_note"),
-        Index("ix_monitored_notes_account_active_checked", "account_id", "is_active", "last_checked_at".asc()),
+        Index("ix_monitored_notes_account_active_checked", "account_id", "is_active", asc("last_checked_at")),
     )
 
     id: Mapped[str] = mapped_column(

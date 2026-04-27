@@ -18,6 +18,7 @@ from app.schemas.interaction import (
     ConversationListRequest,
     ConversationModeRequest,
     ConversationResponse,
+    DMReplyRequest,
     HITLApproveRequest,
     HITLEditApproveRequest,
     HITLBatchApproveRequest,
