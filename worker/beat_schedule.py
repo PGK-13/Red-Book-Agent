@@ -8,6 +8,26 @@ app.conf.beat_schedule = {
         "task": "worker.tasks.account_probe_task.probe_all_accounts",
         "schedule": crontab(minute="*/10"),
     },
+    # 评论探测：每 10 秒（令牌桶控制）
+    "comment-probe": {
+        "task": "worker.tasks.comment_probe_task.probe_monitored_notes",
+        "schedule": 10.0,  # 每 10 秒
+    },
+    # 私信探测：每 5 秒（令牌桶控制）
+    "dm-probe": {
+        "task": "worker.tasks.dm_probe_task.poll_dm_messages",
+        "schedule": 5.0,  # 每 5 秒
+    },
+    # 待发送消息处理：每 10 秒
+    "dm-pending": {
+        "task": "worker.tasks.dm_pending_task.process_pending_messages",
+        "schedule": 10.0,  # 每 10 秒
+    },
+    # Captcha 恢复检查：每 5 分钟
+    "captcha-recovery": {
+        "task": "worker.tasks.captcha_recovery_task.check_captcha_recovery",
+        "schedule": crontab(minute="*/5"),
+    },
     # 数据回抓：每 24 小时（凌晨 2 点）
     "data-sync": {
         "task": "worker.tasks.data_sync_task.sync_all_notes_data",

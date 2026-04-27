@@ -20,6 +20,15 @@ from sqlalchemy.pool import NullPool
 from app.config import settings
 from app.db.session import Base
 from app.models.account import Account, AccountPersona, ProxyConfig  # noqa: F401
+from app.models.interaction import (  # noqa: F401
+    Comment,
+    Conversation,
+    DMTriggerLog,
+    HITLQueue,
+    IntentLog,
+    Message,
+    MonitoredNote,
+)
 
 
 def _make_engine():
@@ -38,9 +47,18 @@ async def _setup_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     async with engine.connect() as conn:
+        # 清除 account 相关
         await conn.execute(text("DELETE FROM proxy_configs"))
         await conn.execute(text("DELETE FROM account_personas"))
         await conn.execute(text("DELETE FROM accounts"))
+        # 清除 interaction 相关（按外键顺序）
+        await conn.execute(text("DELETE FROM hitl_queue"))
+        await conn.execute(text("DELETE FROM dm_trigger_logs"))
+        await conn.execute(text("DELETE FROM messages"))
+        await conn.execute(text("DELETE FROM conversations"))
+        await conn.execute(text("DELETE FROM intent_logs"))
+        await conn.execute(text("DELETE FROM comments"))
+        await conn.execute(text("DELETE FROM monitored_notes"))
         await conn.commit()
     await engine.dispose()
     yield
