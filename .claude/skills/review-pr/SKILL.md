@@ -1,3 +1,8 @@
+---
+name: review-pr
+description: Review a pull request following the team code review workflow
+---
+
 # Review PR
 
 Review a pull request following the team code review workflow.
