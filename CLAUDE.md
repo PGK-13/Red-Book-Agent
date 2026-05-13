@@ -2,6 +2,27 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Canonical Kiro Steering
+
+The canonical project rules live in `.kiro/steering/`. Read and follow these
+files as the source of truth. If this file conflicts with a steering file,
+prefer the steering file.
+
+Always-loaded steering:
+
+@.kiro/steering/project-overview.md
+@.kiro/steering/architecture-layers.md
+@.kiro/steering/code-style.md
+@.kiro/steering/deployment-safety.md
+@.kiro/steering/model-function-overview.md
+
+Context-specific steering:
+
+@.kiro/steering/api-conventions.md
+@.kiro/steering/frontend-design.md
+@.kiro/steering/security.md
+@.kiro/steering/git-workflow.md
+
 ## Project Overview
 
 小红书营销自动化 Agent (Red Book Marketing Automation Agent) — a platform for Xiaohongshu (Little Red Book) merchants covering account management, content generation, interaction routing, risk control, and analytics. The system uses LangGraph for agent orchestration, FastAPI for REST APIs, Celery + RabbitMQ for async tasks, and Next.js for the merchant dashboard.
@@ -11,7 +32,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### 1. Start Docker infrastructure (required)
 
 ```bash
-cd /Users/zklee/coding/Red-Book-Agent
+cd /Users/kai/code/Red-Book-Agent
 docker compose -f infra/docker-compose.yml up -d
 ```
 
@@ -23,7 +44,7 @@ docker compose -f infra/docker-compose.yml ps
 ### 2. Start backend
 
 ```bash
-cd /Users/zklee/coding/Red-Book-Agent/backend
+cd /Users/kai/code/Red-Book-Agent/backend
 source .venv/bin/activate
 uvicorn app.main:app --reload --port 8000
 ```
@@ -31,14 +52,14 @@ uvicorn app.main:app --reload --port 8000
 ### 3. Start Celery worker (optional, for async tasks)
 
 ```bash
-cd /Users/zklee/coding/Red-Book-Agent/worker
+cd /Users/kai/code/Red-Book-Agent/worker
 celery -A celery_app worker --loglevel=info
 ```
 
 ### 4. Start frontend
 
 ```bash
-cd /Users/zklee/coding/Red-Book-Agent/frontend
+cd /Users/kai/code/Red-Book-Agent/frontend
 npm install  # 首次运行
 npm run dev
 ```
@@ -190,10 +211,11 @@ worker/
 ├── tasks/               # Celery tasks (publish, data_sync, industry_crawl, trend_analysis, etc.)
 └── beat_schedule.py     # Celery Beat cron config
 
-.kiro/specs/
-├── architecture.md      # Full architecture document (data models, API specs, critical flows, correctness properties)
-├── module-a-account/    # Module A design docs and requirements
-└── steering/            # Development guidelines (git-workflow, code-style, api-conventions, security, etc.)
+.kiro/
+├── specs/
+│   ├── architecture.md      # Full architecture document (data models, API specs, critical flows, correctness properties)
+│   └── module-a-account/    # Module A design docs and requirements
+└── steering/                # Development guidelines (git-workflow, code-style, api-conventions, security, etc.)
 ```
 
 ## Git Workflow
