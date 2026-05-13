@@ -12,6 +12,7 @@ const titleMap: Record<string, string> = {
   "/risk": "风控管理",
   "/hitl": "审核工作台",
   "/alerts": "告警中心",
+  "/agent-chat": "Agent 对话",
 };
 
 export default function TopNav() {

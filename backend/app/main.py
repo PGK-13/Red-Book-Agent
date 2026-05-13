@@ -1,5 +1,12 @@
+import sys
+from pathlib import Path
+
+# 确保项目根目录在 Python path 中，以便导入 agent 模块
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+
 from app.api.v1 import (
     accounts,
+    agent_chat,
     analytics,
     content,
     interaction,
@@ -29,6 +36,7 @@ app.add_middleware(
 # 注册路由（公开路由必须在 accounts.router 之前，避免路径被 /{account_id} 拦截）
 app.include_router(qr_login.router, prefix="/api/v1")
 app.include_router(accounts.router, prefix="/api/v1")
+app.include_router(agent_chat.router, prefix="/api/v1")
 app.include_router(knowledge.router, prefix="/api/v1")
 app.include_router(content.router, prefix="/api/v1")
 app.include_router(interaction.router, prefix="/api/v1")

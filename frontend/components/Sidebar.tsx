@@ -60,6 +60,21 @@ export const navItems = [
     ),
   },
   {
+    href: "/agent-chat",
+    label: "Agent 对话",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <path
+          d="M3 4a1 1 0 011-1h10a1 1 0 011 1v8a1 1 0 01-1 1H7l-3 3v-3H4a1 1 0 01-1-1V4z"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+        />
+        <path d="M6 7.5h6M6 10.5h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
     href: "/risk",
     label: "风控管理",
     icon: (
