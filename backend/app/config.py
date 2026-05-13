@@ -29,9 +29,17 @@ class Settings(BaseSettings):
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str = ""
 
-    # LLM
+    # LLM — OpenAI
     openai_api_key: str = ""
     openai_model: str = "gpt-4o"
+
+    # LLM — MiniMax
+    minimax_api_key: str = ""
+    minimax_model: str = "MiniMax-M2.7"
+
+    # LLM — DeepSeek
+    deepseek_api_key: str = ""
+    deepseek_model: str = "deepseek-chat"
 
     # 加密（开发环境默认值，生产必须替换）
     encryption_key: str = "dev-key-replace-in-production-32b="
